@@ -1,0 +1,5 @@
+# 统一用 LF，避免 Windows 上提交的 CRLF 让 Linux 上的执行脚本出问题
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
