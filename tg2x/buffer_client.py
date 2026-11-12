@@ -25,7 +25,7 @@ query GetOrganizations {
 """
 
 Q_CHANNELS = """
-query GetChannels($organizationId: String!) {
+query GetChannels($organizationId: OrganizationId!) {
   channels(input: { organizationId: $organizationId }) {
     id
     name
@@ -139,11 +139,12 @@ class BufferClient:
             "channelId": channel_id,
             "schedulingType": "automatic",
             "mode": mode,
+            # needsApproval 是必填布尔；assets 也是必填（无图时传空数组）
+            "needsApproval": False,
+            "assets": assets or [],
         }
         if due_at:
             inp["dueAt"] = due_at
-        if assets:
-            inp["assets"] = assets
         data = self.gql(M_CREATE, {"input": inp})
         res = data.get("createPost") or {}
         if "message" in res and "post" not in res:
