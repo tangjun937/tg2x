@@ -1,0 +1,93 @@
+# ===== Telegram 频道 -> 英文翻译 -> Buffer -> X 自动搬运 =====
+
+# 你关注的频道（不带 @）
+channel: "YMISH3333"
+
+fetch:
+  # web      : 抓 https://t.me/s/<channel> 网页版，零凭证，30s 轮询（你不是频道主，只能用这个或 telethon）
+  # telethon : MTProto 用户会话，频道转私有 / 要秒级时用，需 api_id/api_hash + 手机号登录
+  # bot      : 仅频道的管理员可用（把 bot 设为频道管理员），你不在这种情况
+  backend: "web"
+  interval_seconds: 30
+  # 单次最多处理多少条新帖，防止积压时一次性刷屏
+  max_per_cycle: 5
+  request_timeout: 20
+
+publish:
+  # 首次启动时，频道里已有的历史帖是否也发出去
+  # false = 只发接入之后的新帖（推荐）
+  publish_existing_on_boot: false
+  dry_run: false
+  # buffer | command | http | dry_run
+  target: "buffer"
+  max_len: 280
+  include_source_link: true
+
+  buffer:
+    token_env: "BUFFER_TOKEN"
+    # 留空 = 自动在 Buffer 里找连着的 X 频道并缓存到 data/buffer_channel.json
+    # 有多个 X 频道时，这里必须填（先跑 python run.py buffer-setup 看 id）
+    organization_id: ""
+    channel_id: ""
+    # shareNow（立即发）| addToQueue（进 Buffer 队列的下一个空档）| customScheduled
+    mode: "shareNow"
+    # telegram_url : 直接把 Telegram CDN 图片链接传给 Buffer（零成本，默认）
+    # none         : 只发文字
+    media: "telegram_url"
+    max_assets: 4
+    timeout: 30
+
+  # target=command 时才用：调用任意脚本，JSON 从 stdin 传入，退出码 0 为成功
+  command:
+    command: 'python "D:/2026-11-12-16-57-36/tg2x/examples/x_poster_example.py"'
+
+  # target=http 时才用
+  http:
+    url: ""
+    token_env: "X_POSTER_TOKEN"
+
+translate:
+  # google_free : 免费、无需 key（默认）
+  # llm         : 走 OpenAI 兼容接口，译文更自然
+  provider: "google_free"
+  base_url: "https://api.openai.com/v1"
+  model: "gpt-4o-mini"
+  api_key_env: "OPENAI_API_KEY"
+  timeout: 30
+  # 两次翻译请求的最小间隔（秒）。免费接口会限流，别设为 0
+  min_interval: 1.5
+  # 主引擎被限流时的备用引擎：留空 = 不启用；"mymemory" = 用 MyMemory 免费接口应急
+  fallback: ""
+  prefix: ""
+  # 话题标签是否抽出到末尾。false = 留在原位由翻译引擎处理（推荐）
+  keep_hashtags: false
+  strip_urls_from_translate: true
+
+# 原文清洗：频道尾巴的推广/投稿联系方式不要带到 X
+cleanup:
+  remove_patterns:
+    - '关注[^\n]*?频道[^\n]*'
+    - '投稿\s*[:：]\s*@\w+'
+    - '商务合作\s*[:：][^\n]*'
+    - '^\s*[➡️👉]\s*[^\n]*$'
+    - '^\s*@\w+\s*$'
+  # 命中任一词就跳过不发（X 对赌博/灰产/涉黄内容有限制，建议按需打开）
+  block_keywords: []
+
+storage:
+  data_dir: "data"
+  # 原文 + 图片归档到本地，保证"复制下来"这一步不丢东西
+  archive_media: true
+
+# 跑完通过你的 bot 给自己发一条回执（不是用来读频道的，bot 进不了别人的频道）
+notify:
+  enabled: true
+  bot_token_env: "TG_BOT_TOKEN"
+  chat_id_env: "TG_CHAT_ID"
+  on_success: true
+  on_failure: true
+  # 回执里是否带上发出去的英文正文（方便快速过一眼）
+  include_text: true
+  # 没有新帖就不发消息，避免定时任务每 10 分钟骚扰一次
+  quiet_when_noop: true
+  timeout: 20
