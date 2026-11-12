@@ -1,0 +1,75 @@
+name: tg2x
+
+# GitHub 的定时任务最快 5 分钟一次，且高峰期会被延迟 5-20 分钟。
+# 想更实时就得换常驻方案（见 DEPLOY.md 最后一节）。
+on:
+  schedule:
+    - cron: "*/30 * * * *" # 每 30 分钟（UTC）。私有仓库免费额度有限，*/30 是安全线；想更快先升级额度
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "只跑不发（dry run），用来验证链路"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# 防止两次运行叠在一起（叠起来会重复发文）
+concurrency:
+  group: tg2x
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: 安装依赖
+        run: pip install -r requirements.txt
+
+      - name: 恢复去重状态
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            data/tg2x.sqlite3
+            data/buffer_channel.json
+          key: tg2x-state-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            tg2x-state-
+
+      - name: 跑一轮
+        env:
+          BUFFER_TOKEN: ${{ secrets.BUFFER_TOKEN }}
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          TZ: Asia/Shanghai
+          PYTHONIOENCODING: utf-8
+        run: |
+          mkdir -p data
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            echo "== dry run =="
+            python run.py once --dry-run
+          else
+            python run.py once
+          fi
+
+      - name: 保存去重状态
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            data/tg2x.sqlite3
+            data/buffer_channel.json
+          key: tg2x-state-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: 失败时把日志尾部打到输出里
+        if: failure()
+        run: tail -n 60 data/tg2x.log || true
