@@ -71,10 +71,10 @@ class Pipeline:
                         len(fresh), self.max_per_cycle, self.max_per_cycle)
             fresh = fresh[: self.max_per_cycle]
 
-        for post in fresh:
+        for idx, post in enumerate(fresh):
             result["new"] += 1
             try:
-                ok = self._handle(post, publish=publish)
+                ok = self._handle(post, publish=publish, position=idx)
                 result["published" if ok else "skipped"] += 1
             except Exception as e:  # noqa: BLE001
                 result["failed"] += 1
@@ -85,7 +85,7 @@ class Pipeline:
         self.notifier.report(result, self._items)
         return result
 
-    def _handle(self, post: TgPost, publish: bool = True) -> bool:
+    def _handle(self, post: TgPost, publish: bool = True, position: int = 0) -> bool:
         if not post.text.strip() and not post.media_urls:
             self.store.record(post, "skipped")
             return False
@@ -112,7 +112,7 @@ class Pipeline:
             self.store.mark(post.channel, post.message_id, "translated")
             return False
 
-        res = self.publisher.publish(item)
+        res = self.publisher.publish(item, position=position)
         if res.ok:
             self.store.mark(post.channel, post.message_id, "published",
                             tweet_id=res.tweet_id, error=None)
@@ -165,12 +165,12 @@ class Pipeline:
     def backfill(self, limit: int = 20, publish: bool = False) -> dict:
         posts = self._fetcher().fetch(limit=limit)
         out = {"fetched": len(posts), "new": 0, "published": 0, "failed": 0}
-        for p in posts:
+        for idx, p in enumerate(posts):
             if self.store.seen(p.channel, p.message_id):
                 continue
             out["new"] += 1
             try:
-                ok = self._handle(p, publish=publish)
+                ok = self._handle(p, publish=publish, position=idx)
                 out["published" if ok else "failed"] += 1
             except Exception as e:  # noqa: BLE001
                 out["failed"] += 1
