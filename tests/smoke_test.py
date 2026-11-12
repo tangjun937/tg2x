@@ -133,10 +133,10 @@ def test_buffer() -> None:
         def __init__(self):
             self.calls = []
 
-        def create_post(self, channel_id, text, assets=None, mode="shareNow"):
+        def create_post(self, channel_id, text, assets=None, mode="shareNow", due_at=None):
             self.calls.append({"channel_id": channel_id, "text": text,
-                               "assets": assets or [], "mode": mode})
-            return {"id": "buf_123", "dueAt": "2026-11-12T10:00:00.000Z"}
+                               "assets": assets or [], "mode": mode, "due_at": due_at})
+            return {"id": "buf_123", "dueAt": due_at or "2026-11-12T10:00:00.000Z"}
 
     cfg = cfgmod.load()
     cfg._data["publish"]["target"] = "buffer"
