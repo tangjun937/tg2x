@@ -4,7 +4,7 @@ name: tg2x
 # 想更实时就得换常驻方案（见 DEPLOY.md 最后一节）。
 on:
   schedule:
-    - cron: "*/30 * * * *" # 每 30 分钟（UTC）。私有仓库免费额度有限，*/30 是安全线；想更快先升级额度
+    - cron: "0 * * * *" # 每小时一次（UTC 整点）。私有仓库免费额度有限，小时级是安全线
   workflow_dispatch:
     inputs:
       dry_run:
