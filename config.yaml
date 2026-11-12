@@ -9,8 +9,8 @@ fetch:
   # bot      : 仅频道的管理员可用（把 bot 设为频道管理员），你不在这种情况
   backend: "web"
   interval_seconds: 30
-  # 单次最多处理多少条新帖，防止积压时一次性刷屏
-  max_per_cycle: 5
+  # 单次最多处理多少条新帖，防止积压时一次性刷屏（配合 Buffer 间隔）
+  max_per_cycle: 2
   request_timeout: 20
 
 publish:
@@ -28,9 +28,12 @@ publish:
     # 留空 = 自动在 Buffer 里找连着的 X 频道并缓存到 data/buffer_channel.json
     # 有多个 X 频道时，这里必须填（先跑 python run.py buffer-setup 看 id）
     organization_id: ""
-    channel_id: ""
+    channel_id: "6ae73010e29c69a17126cbf5"
     # shareNow（立即发）| addToQueue（进 Buffer 队列的下一个空档）| customScheduled
     mode: "shareNow"
+    # 同批次的第 2 条起，自动排到 10-15 分钟后的随机时刻再发（避免连发被判刷屏）
+    spacing_min_minutes: 10
+    spacing_max_minutes: 15
     # telegram_url : 直接把 Telegram CDN 图片链接传给 Buffer（零成本，默认）
     # none         : 只发文字
     media: "telegram_url"
