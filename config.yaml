@@ -21,7 +21,8 @@ publish:
   # buffer | command | http | dry_run
   target: "buffer"
   max_len: 280
-  include_source_link: true
+  # 发文是否带上 Telegram 原文链接（false = 只发正文，不带链接）
+  include_source_link: false
 
   buffer:
     token_env: "BUFFER_TOKEN"
