@@ -13,11 +13,16 @@ Buffer 的限制：不支持文件上传，图片必须是公网 URL。
 from __future__ import annotations
 
 import json
+import logging
+import random
 import subprocess
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import requests
+
+log = logging.getLogger("tg2x")
 
 from .buffer_client import (
     BufferClient,
@@ -72,7 +77,7 @@ class Publisher:
         }
 
     # ---------- 发送 ----------
-    def publish(self, item: TransPost) -> PublishResult:
+    def publish(self, item: TransPost, position: int = 0) -> PublishResult:
         if not item.final_text:
             item.final_text = self.build_text(item)
 
@@ -80,7 +85,7 @@ class Publisher:
             return PublishResult(True, "", "DRY-RUN 未真实发送")
 
         if self.target == "buffer":
-            return self._buffer(item)
+            return self._buffer(item, position=position)
         if self.target == "command":
             return self._command(self.payload(item))
         if self.target == "http":
@@ -112,7 +117,7 @@ class Publisher:
         save_channel_cache(cache_path, org_id, channel)
         return channel["id"]
 
-    def _buffer(self, item: TransPost) -> PublishResult:
+    def _buffer(self, item: TransPost, position: int = 0) -> PublishResult:
         try:
             client = self._buffer_client()
             channel_id = self.resolve_buffer_channel()
@@ -123,11 +128,25 @@ class Publisher:
                     item.post.media_urls,
                     limit=int(self.cfg.get("publish.buffer.max_assets", 4) or 4),
                 )
+            mode = self.cfg.get("publish.buffer.mode", "shareNow")
+            due_at = None
+            # 同批次的第 2 条往后，排到 10-15 分钟后的随机时刻，避免瞬间连发被 X 判刷屏
+            if position > 0:
+                lo = int(self.cfg.get("publish.buffer.spacing_min_minutes", 10) or 10)
+                hi = int(self.cfg.get("publish.buffer.spacing_max_minutes", 15) or 15)
+                if hi < lo:
+                    hi = lo
+                delay = random.randint(lo, hi)
+                due = datetime.now(timezone.utc) + timedelta(minutes=delay)
+                due_at = due.strftime("%Y-%m-%dT%H:%M:%SZ")
+                mode = "customScheduled"
+                log.info("同批第 %d 条排到 %d 分钟后发布（%s）", position + 1, delay, due_at)
             post = client.create_post(
                 channel_id=channel_id,
                 text=item.final_text,
                 assets=assets,
-                mode=self.cfg.get("publish.buffer.mode", "shareNow"),
+                mode=mode,
+                due_at=due_at,
             )
             return PublishResult(True, str(post.get("id", "")),
                                  f"buffer post {post.get('id')} dueAt={post.get('dueAt')}")
