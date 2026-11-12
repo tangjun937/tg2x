@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.env
+data/*.sqlite3
+data/*.session
+data/*.session-journal
+data/tg2x.log
+data/media/*
+data/archive/
+!data/.gitkeep
