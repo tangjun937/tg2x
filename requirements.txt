@@ -1,0 +1,9 @@
+# 核心依赖（web 抓取模式只需这两个，本机已装）
+requests>=2.31
+beautifulsoup4>=4.12
+lxml>=4.9
+PyYAML>=6.0
+
+# 可选：telethon 用户会话模式（连私有频道 / 更高实时性时安装）
+# pip install telethon
+# telethon>=1.34
