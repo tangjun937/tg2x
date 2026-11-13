@@ -244,6 +244,35 @@ def cmd_once(cfg: cfgmod.Config, dry_run: bool) -> int:
         p.close()
 
 
+def cmd_preview(cfg: cfgmod.Config, channel: str) -> int:
+    """释放指定频道最新一条（只删该频道），再跑一轮发出去。"""
+    p = Pipeline(cfg)
+    try:
+        targets = ([channel.lstrip("@").lower()] if channel
+                   else [c["name"] for c in p.channels])
+        for ch in targets:
+            row = p.store.conn.execute(
+                "SELECT channel, message_id FROM messages "
+                "WHERE lower(channel)=lower(?) ORDER BY message_id DESC LIMIT 1",
+                (ch,),
+            ).fetchone()
+            if row:
+                p.store.conn.execute(
+                    "DELETE FROM messages WHERE channel=? AND message_id=?",
+                    (row["channel"], row["message_id"]),
+                )
+                p.store.conn.commit()
+                print(f"已释放最新一条: {row['channel']}:{row['message_id']}")
+            else:
+                print(f"频道 {ch} 没有可释放的记录（尚未建基线）")
+        r = p.cycle()
+        print(f"\n结果: 抓到 {r['fetched']}，新帖 {r['new']}，发布 {r['published']}，"
+              f"失败 {r['failed']}，跳过 {r['skipped']}")
+        return 0 if r["failed"] == 0 else 2
+    finally:
+        p.close()
+
+
 def cmd_loop(cfg: cfgmod.Config, dry_run: bool, interval: int | None) -> int:
     p = Pipeline(cfg, dry_run=dry_run)
     try:
@@ -350,6 +379,9 @@ def main() -> int:
     sp = sub.add_parser("once", help="跑一轮")
     sp.add_argument("--dry-run", action="store_true", default=None)
 
+    sp = sub.add_parser("preview", help="释放指定频道最新一条并发送")
+    sp.add_argument("--channel", default="", help="频道名（默认释放所有频道的最新一条）")
+
     sp = sub.add_parser("loop", help="常驻轮询")
     sp.add_argument("--dry-run", action="store_true", default=None)
     sp.add_argument("--interval", type=int, default=None)
@@ -380,6 +412,8 @@ def main() -> int:
         return cmd_probe(cfg, args.limit, not args.no_translate)
     if args.cmd == "once":
         return cmd_once(cfg, args.dry_run)
+    if args.cmd == "preview":
+        return cmd_preview(cfg, args.channel)
     if args.cmd == "loop":
         return cmd_loop(cfg, args.dry_run, args.interval)
     if args.cmd == "backfill":
