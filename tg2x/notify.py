@@ -59,29 +59,36 @@ class TgNotifier:
 
     # ---------- 业务回执 ----------
     def report(self, result: dict, items: list[dict] | None = None) -> None:
-        """result 来自 Pipeline.cycle()；items 是已发布条目的摘要。"""
+        """result 来自 Pipeline.cycle()；items 是每条处理的摘要（含失败原因）。"""
         if not self.enabled:
             return
-        new, failed, published = result.get("new", 0), result.get("failed", 0), result.get("published", 0)
+        new = result.get("new", 0)
+        failed = result.get("failed", 0)
+        published = result.get("published", 0)
+        items = items or []
+        ok_items = [i for i in items if not i.get("error")]
+        bad_items = [i for i in items if i.get("error")]
 
-        if new == 0 and failed == 0 and self.quiet_when_noop:
-            return  # 没新帖就闭嘴，别每 10 分钟骚扰一次
+        if new == 0 and self.quiet_when_noop:
+            return  # 没新帖就闭嘴，别每次定时任务都来一条
 
+        lines: list[str] = []
+        if published:
+            lines.append(f"✅ 已发布 {published} 条到 X（经 Buffer）")
         if failed and self.on_failure:
-            lines = [f"⚠️ 本轮有 {failed} 条失败（成功 {published}）"]
-            for it in (items or []):
-                if it.get("error"):
-                    lines.append(f"· {it.get('key')}: {it['error'][:180]}")
-            self.send("\n".join(lines))
-            return
+            lines.append(f"⚠️ 失败 {failed} 条，以下内容没有发出去：")
+            for it in bad_items:
+                lines.append(f"· {it.get('key')}: {it['error'][:180]}")
+        if not published and not failed:
+            lines.append("本轮只有广告/重复内容，已全部跳过，没有发布。")
 
-        if published and self.on_success:
-            lines = [f"✅ 已发布 {published} 条到 X（经 Buffer）"]
-            if self.include_text:
-                for it in (items or [])[:3]:
-                    lines.append("")
-                    lines.append(f"— {it.get('key')} —")
-                    lines.append(it.get("text", "")[:600])
+        if published and self.include_text and self.on_success:
+            for it in ok_items[:3]:
+                lines.append("")
+                lines.append(f"— {it.get('key')} —")
+                lines.append((it.get("text") or "")[:600])
+
+        if lines:
             self.send("\n".join(lines))
 
 
