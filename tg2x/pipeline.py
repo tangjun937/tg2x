@@ -8,6 +8,7 @@ from pathlib import Path
 
 import requests
 
+from .adfilter import ad_reason
 from .config import Config
 from .fetchers import build_fetcher
 from .models import TgPost, TransPost, now_iso
@@ -65,37 +66,39 @@ class Pipeline:
             return result
 
         fresh = [p for p in posts if not self.store.seen(p.channel, p.message_id)]
-        fresh.sort(key=lambda p: p.message_id)
+        # 从新到旧：只搬最新的，不追旧帖（陈旧资讯发出去没意义）
+        fresh.sort(key=lambda p: p.message_id, reverse=True)
         if len(fresh) > self.max_per_cycle:
-            log.warning("本轮新帖 %d 条，超过上限 %d，只处理最早的 %d 条",
-                        len(fresh), self.max_per_cycle, self.max_per_cycle)
+            log.info("本轮新帖 %d 条，超过上限 %d，只处理最新的 %d 条",
+                     len(fresh), self.max_per_cycle, self.max_per_cycle)
             fresh = fresh[: self.max_per_cycle]
 
         for idx, post in enumerate(fresh):
             result["new"] += 1
+            status = "failed"
             try:
-                ok = self._handle(post, publish=publish, position=idx)
-                result["published" if ok else "skipped"] += 1
+                status = self._handle(post, publish=publish, position=idx)
             except Exception as e:  # noqa: BLE001
-                result["failed"] += 1
                 log.exception("处理失败 %s: %s", post.key, e)
                 self.store.mark(post.channel, post.message_id, "failed", error=str(e)[:500])
                 self._items.append({"key": post.key, "text": "", "error": str(e)[:300]})
+            result[status] += 1
 
         self.notifier.report(result, self._items)
         return result
 
-    def _handle(self, post: TgPost, publish: bool = True, position: int = 0) -> bool:
+    def _handle(self, post: TgPost, publish: bool = True, position: int = 0) -> str:
+        """返回 published / skipped / failed 三种状态之一。"""
         if not post.text.strip() and not post.media_urls:
             self.store.record(post, "skipped")
-            return False
+            return "skipped"
 
-        hit = self._blocked_by(post.text)
-        if hit:
-            log.warning("命中屏蔽词「%s」，跳过不发 [%s]", hit, post.key)
+        reason = self._skip_reason(post.text)
+        if reason:
+            log.info("跳过 [%s]：%s", post.key, reason)
             self.store.record(post, "skipped")
-            self.store.archive(post, {"reason": f"block-keyword:{hit}"})
-            return False
+            self.store.archive(post, {"reason": reason})
+            return "skipped"
 
         self.store.record(post, "new")
         self._fetch_media(post)
@@ -110,7 +113,7 @@ class Pipeline:
 
         if not publish:
             self.store.mark(post.channel, post.message_id, "translated")
-            return False
+            return "skipped"
 
         res = self.publisher.publish(item, position=position)
         if res.ok:
@@ -119,12 +122,25 @@ class Pipeline:
             tag = "DRY-RUN " if self.publisher.dry_run else ""
             log.info("%s已发 X [%s] tweet=%s", tag, post.key, res.tweet_id or "?")
             self._items.append({"key": post.key, "text": item.final_text, "error": None})
-            return True
+            return "published"
 
         self.store.mark(post.channel, post.message_id, "failed", error=res.detail)
         log.error("发 X 失败 [%s] %s", post.key, res.detail)
         self._items.append({"key": post.key, "text": item.final_text, "error": res.detail})
-        return False
+        return "failed"
+
+    # ---------- 跳过判定 ----------
+    def _skip_reason(self, text: str) -> str:
+        """黑名单词或广告特征命中就返回原因，否则返回空串。"""
+        hit = self._blocked_by(text)
+        if hit:
+            return f"屏蔽词:{hit}"
+        return ad_reason(
+            text,
+            strong=self.cfg.get("cleanup.ad_keywords", None),
+            weak=self.cfg.get("cleanup.ad_weak_keywords", None),
+            min_weak=int(self.cfg.get("cleanup.ad_weak_threshold", 2) or 2),
+        )
 
     # ---------- 关键词屏蔽 ----------
     def _blocked_by(self, text: str) -> str:
@@ -170,8 +186,8 @@ class Pipeline:
                 continue
             out["new"] += 1
             try:
-                ok = self._handle(p, publish=publish, position=idx)
-                out["published" if ok else "failed"] += 1
+                status = self._handle(p, publish=publish, position=idx)
+                out["published" if status == "published" else "failed"] += 1
             except Exception as e:  # noqa: BLE001
                 out["failed"] += 1
                 log.error("回填失败 %s: %s", p.key, e)
