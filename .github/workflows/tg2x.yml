@@ -18,7 +18,7 @@ on:
         default: false
 
 permissions:
-  contents: read
+  contents: write
 
 # 防止两次运行叠在一起（叠起来会重复发文）
 concurrency:
@@ -74,6 +74,19 @@ jobs:
             data/tg2x.sqlite3
             data/buffer_channel.json
           key: tg2x-state-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: 推送中文原文（供本机国内分发）
+        if: success()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/cn_feed.json
+          if git diff --cached --quiet; then
+            echo "cn_feed.json 无变化，跳过提交"
+          else
+            git commit -m "chore: update cn feed"
+            git push
+          fi
 
       - name: 失败时把日志尾部打到输出里
         if: failure()
