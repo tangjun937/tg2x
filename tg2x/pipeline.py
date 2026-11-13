@@ -117,10 +117,15 @@ class Pipeline:
 
         res = self.publisher.publish(item, position=position)
         if res.ok:
+            if self.publisher.dry_run:
+                # dry run 不写去重库，否则这条会被当成已发，真跑时反而漏掉
+                self.store.mark(post.channel, post.message_id, "translated")
+                log.info("DRY-RUN 生成完毕 [%s]（未入库，下一轮仍会真发）", post.key)
+                self._items.append({"key": post.key, "text": item.final_text, "error": None})
+                return "published"
             self.store.mark(post.channel, post.message_id, "published",
                             tweet_id=res.tweet_id, error=None)
-            tag = "DRY-RUN " if self.publisher.dry_run else ""
-            log.info("%s已发 X [%s] tweet=%s", tag, post.key, res.tweet_id or "?")
+            log.info("已发 X [%s] tweet=%s", post.key, res.tweet_id or "?")
             self._items.append({"key": post.key, "text": item.final_text, "error": None})
             return "published"
 
