@@ -55,6 +55,7 @@ jobs:
           BUFFER_TOKEN: ${{ secrets.BUFFER_TOKEN }}
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           TZ: Asia/Shanghai
           PYTHONIOENCODING: utf-8
         run: |
