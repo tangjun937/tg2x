@@ -4,8 +4,12 @@ name: tg2x
 # 想更实时就得换常驻方案（见 DEPLOY.md 最后一节）。
 on:
   schedule:
-    # 每 30 分钟一轮，每轮只搬最新 1 条（GitHub 偶尔延迟 5-20 分钟，属正常）
+    # 每 30 分钟一轮，每轮只搬最新 1 条。
+    # 注意：GitHub 的定时任务是「尽力而为」，高峰期会延迟甚至漏跑，不能保证准点。
     - cron: "*/30 * * * *"
+  # 备用触发：外部定时器（cron-job.org 等）POST 到 dispatches 端点，秒级准点、不排队。
+  repository_dispatch:
+    types: [run]
   workflow_dispatch:
     inputs:
       dry_run:
