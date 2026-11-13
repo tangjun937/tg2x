@@ -26,70 +26,98 @@ class Pipeline:
         self.cfg = cfg
         # TG 用户名大小写不敏感，统一小写，避免和解析结果对不上
         self.channel = (cfg.get("channel") or "").lstrip("@").lower()
+        self.channels = self._parse_channels(cfg)
         self.store = Store(cfg.path_of("storage.data_dir", "data"))
         self.translator = Translator(cfg)
         self.publisher = Publisher(cfg)
         if dry_run is not None:
             self.publisher.dry_run = dry_run
-        self.fetcher = None
+        self._fetchers: dict[str, object] = {}
         self.notifier = TgNotifier(cfg)
         self._items: list[dict] = []
         self.max_per_cycle = int(cfg.get("fetch.max_per_cycle", 5) or 5)
         self.archive_media = bool(cfg.get("storage.archive_media", True))
 
+    @staticmethod
+    def _parse_channels(cfg: Config) -> list[dict]:
+        chans = cfg.get("channels", None)
+        out: list[dict] = []
+        if chans and isinstance(chans, list):
+            for c in chans:
+                name = str(c.get("name", "")).lstrip("@").lower()
+                if not name:
+                    continue
+                out.append({
+                    "name": name,
+                    "lang": (c.get("lang") or "zh").lower(),
+                    "rewrite": bool(c.get("rewrite", False)),
+                })
+        if not out:
+            out.append({"name": (cfg.get("channel") or "").lstrip("@").lower(),
+                        "lang": "zh", "rewrite": False})
+        return out
+
     # ---------- fetcher ----------
-    def _fetcher(self):
-        if self.fetcher is None:
+    def _fetcher(self, channel: str | None = None):
+        key = (channel or self.channel).lower()
+        if key not in self._fetchers:
             offset = int(self.store.get_meta("bot_offset", "0") or 0)
-            self.fetcher = build_fetcher(self.cfg, offset=offset)
-        return self.fetcher
+            self._fetchers[key] = build_fetcher(self.cfg, offset=offset, channel=key)
+        return self._fetchers[key]
 
     # ---------- 一轮 ----------
     def cycle(self, publish: bool = True) -> dict:
         result = {"fetched": 0, "new": 0, "published": 0, "failed": 0, "skipped": 0}
         self._items = []
-        fetcher = self._fetcher()
+        for ch in self.channels:
+            self._cycle_channel(ch, result, publish)
+        self.notifier.report(result, self._items)
+        return result
+
+    def _cycle_channel(self, ch: dict, result: dict, publish: bool) -> None:
+        fetcher = self._fetcher(ch["name"])
         posts = fetcher.fetch(limit=30)
-        result["fetched"] = len(posts)
-        self._export_cn_feed(posts)
+        result["fetched"] += len(posts)
+
+        # 中文原文只导出主频道，供本机国内分发器拉取（英文频道不用导）
+        if ch["name"] == self.channel:
+            self._export_cn_feed(posts)
 
         if getattr(fetcher, "offset", None):
             self.store.set_meta("bot_offset", str(fetcher.offset))
 
-        boot_key = f"boot_done:{self.channel}"
+        boot_key = f"boot_done:{ch['name']}"
         first_run = self.store.get_meta(boot_key) != "1"
         if first_run and not self.cfg.get("publish.existing_on_boot", False):
             for p in posts:
                 self.store.record(p, status="skipped")
                 self.store.archive(p, {"reason": "boot-baseline"})
             self.store.set_meta(boot_key, "1")
-            result["skipped"] = len(posts)
-            log.info("首次启动：已把 %d 条历史帖标记为基线，不发布", len(posts))
-            return result
+            result["skipped"] += len(posts)
+            log.info("频道 @%s 首次启动：已把 %d 条历史帖标记为基线，不发布",
+                     ch["name"], len(posts))
+            return
 
         fresh = [p for p in posts if not self.store.seen(p.channel, p.message_id)]
         # 从新到旧：只搬最新的，不追旧帖（陈旧资讯发出去没意义）
         fresh.sort(key=lambda p: p.message_id, reverse=True)
         if len(fresh) > self.max_per_cycle:
-            log.info("本轮新帖 %d 条，超过上限 %d，只处理最新的 %d 条",
-                     len(fresh), self.max_per_cycle, self.max_per_cycle)
+            log.info("频道 @%s 本轮新帖 %d 条，超过上限 %d，只处理最新的 %d 条",
+                     ch["name"], len(fresh), self.max_per_cycle, self.max_per_cycle)
             fresh = fresh[: self.max_per_cycle]
 
         for idx, post in enumerate(fresh):
             result["new"] += 1
             status = "failed"
             try:
-                status = self._handle(post, publish=publish, position=idx)
+                status = self._handle(post, ch, publish=publish, position=idx)
             except Exception as e:  # noqa: BLE001
                 log.exception("处理失败 %s: %s", post.key, e)
                 self.store.mark(post.channel, post.message_id, "failed", error=str(e)[:500])
                 self._items.append({"key": post.key, "text": "", "error": str(e)[:300]})
             result[status] += 1
 
-        self.notifier.report(result, self._items)
-        return result
-
-    def _handle(self, post: TgPost, publish: bool = True, position: int = 0) -> str:
+    def _handle(self, post: TgPost, ch: dict, publish: bool = True, position: int = 0) -> str:
         """返回 published / skipped / failed 三种状态之一。"""
         if not post.text.strip() and not post.media_urls:
             self.store.record(post, "skipped")
@@ -105,7 +133,14 @@ class Pipeline:
         self.store.record(post, "new")
         self._fetch_media(post)
 
-        text_en = self.translator.translate(post.text) if post.text.strip() else ""
+        text_en = ""
+        if post.text.strip():
+            if ch["lang"] == "en":
+                # 英文频道：原文直接发，或洗稿改写后发
+                text_en = (self.translator.rewrite(post.text) if ch["rewrite"]
+                           else self.translator._clean_en(post.text))
+            else:
+                text_en = self.translator.translate(post.text)
         item = TransPost(post=post, text_en=text_en)
         item.final_text = self.publisher.build_text(item)
         self.store.mark(post.channel, post.message_id, "translated", text_en=text_en)
@@ -205,14 +240,15 @@ class Pipeline:
 
     # ---------- 回填 ----------
     def backfill(self, limit: int = 20, publish: bool = False) -> dict:
-        posts = self._fetcher().fetch(limit=limit)
+        ch = self.channels[0]
+        posts = self._fetcher(ch["name"]).fetch(limit=limit)
         out = {"fetched": len(posts), "new": 0, "published": 0, "failed": 0}
         for idx, p in enumerate(posts):
             if self.store.seen(p.channel, p.message_id):
                 continue
             out["new"] += 1
             try:
-                status = self._handle(p, publish=publish, position=idx)
+                status = self._handle(p, ch, publish=publish, position=idx)
                 out["published" if status == "published" else "failed"] += 1
             except Exception as e:  # noqa: BLE001
                 out["failed"] += 1
@@ -221,7 +257,8 @@ class Pipeline:
 
     def loop(self, interval: int | None = None) -> None:
         interval = interval or int(self.cfg.get("fetch.interval_seconds", 30) or 30)
-        log.info("开始轮询 @%s（后端=%s，间隔=%ss）", self.channel,
+        names = ", ".join(c["name"] for c in self.channels)
+        log.info("开始轮询 @%s（后端=%s，间隔=%ss）", names,
                  self.cfg.get("fetch.backend"), interval)
         while True:
             try:
@@ -235,5 +272,8 @@ class Pipeline:
             time.sleep(interval)
 
     def close(self) -> None:
-        if self.fetcher is not None:
-            self.fetcher.close()
+        for f in self._fetchers.values():
+            try:
+                f.close()
+            except Exception:  # noqa: BLE001
+                pass
