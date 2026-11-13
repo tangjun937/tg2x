@@ -19,12 +19,30 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
 URL_RE = re.compile(r"url\(['\"]?(.*?)['\"]?\)")
 
 
+def _strip_heading(text_el):
+    """去掉快讯开头的加粗标题（<b>/<strong> 包裹、位于正文最前），只留正文。"""
+    b = text_el.find(["b", "strong"])
+    if b is None:
+        return
+    # 确认这个 b/strong 之前没有实质文本或元素（即它确实是标题，不是正文里的加粗词）
+    prev = b.previous_sibling
+    while prev is not None:
+        if getattr(prev, "name", None) is not None:
+            return
+        if isinstance(prev, str) and prev.strip():
+            return
+        prev = prev.previous_sibling
+    b.extract()
+
+
 class WebFetcher(Fetcher):
     name = "web"
 
-    def __init__(self, channel: str, timeout: int = 20, user_agent: str = UA):
+    def __init__(self, channel: str, timeout: int = 20, user_agent: str = UA,
+                 strip_heading: bool = False):
         self.channel = channel.lstrip("@")
         self.timeout = timeout
+        self.strip_heading = strip_heading
         self.session = requests.Session()
         self.session.headers.update({
             "User-Agent": user_agent,
@@ -67,6 +85,8 @@ class WebFetcher(Fetcher):
                 # <br> 转成换行；去掉转发来源之类的杂项
                 for br in text_el.find_all("br"):
                     br.replace_with("\n")
+                if self.strip_heading:
+                    _strip_heading(text_el)
                 text = text_el.get_text("", strip=False).strip()
 
             time_el = wrap.select_one("time[datetime]")
