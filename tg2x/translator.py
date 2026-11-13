@@ -34,6 +34,9 @@ DEFAULT_REMOVE = [
     r"^\s*@\w+\s*$",
 ]
 
+# 频道每条快讯第一行是【标题/抬头】，按需整行去掉、只留正文（见 cleanup.remove_heading）
+HEADING_RE = re.compile(r"^\s*【[^】]*】\s*$", flags=re.MULTILINE)
+
 # 用于「从末尾剥推广行」的判断
 PROMO_LEAD = "📢📣🔗😘➡️👉🔔💬✈️🚀📌📍👇🎯🆔"
 PROMO_HEADS = ("订阅", "投稿", "爆料", "商务", "合作", "加群", "广告", "推广", "关注",
@@ -105,6 +108,9 @@ class Translator:
 
     def _clean(self, text: str) -> str:
         """去掉频道推广尾巴 / 投稿联系方式等噪音。"""
+        if self.cfg.get("cleanup.remove_heading", False):
+            text = HEADING_RE.sub("", text, count=1).strip()
+
         patterns = self.cfg.get("cleanup.remove_patterns", None)
         if patterns is None:
             patterns = DEFAULT_REMOVE
