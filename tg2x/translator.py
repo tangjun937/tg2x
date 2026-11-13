@@ -68,11 +68,12 @@ SYSTEM_PROMPT = (
 )
 
 REWRITE_SYSTEM = (
-    "You are a news editor. Rewrite the given English news snippet so it expresses "
-    "the same facts in a different, natural way (paraphrase). Rules: keep every fact, "
-    "number, and name exactly; do not add or remove information; do not editorialize; "
-    "keep names of people/places/organizations unchanged; keep emoji and line breaks; "
-    "no preamble; output only the rewritten text."
+    "You are a news editor. Condense the given English news snippet into a short, "
+    "punchy summary that captures only the essential point. Rules: express the core "
+    "meaning in your own words and sentence structure (do NOT mirror the original); "
+    "keep key facts, names, and numbers accurate; drop attribution phrases like "
+    "'according to X' and secondary details; 2-3 short sentences max; keep emoji; "
+    "no preamble; output only the summary."
 )
 
 
