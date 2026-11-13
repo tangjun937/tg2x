@@ -56,9 +56,10 @@ class Publisher:
         body = (item.text_en or "").strip()
         link = item.post.url if self.add_link and item.post.url else ""
         if not link:
-            return _clip(body, self.max_len)
-        room = self.max_len - len(link) - 2
-        return f"{_clip(body, max(room, 40))}\n\n{link}"
+            return _clip_weighted(body, self.max_len)
+        # X 的 t.co 短链固定按 23 字计权，这里留够并多留 3 字余量
+        room = self.max_len - 23 - 3
+        return f"{_clip_weighted(body, max(room, 40))}\n\n{link}"
 
     def payload(self, item: TransPost) -> dict:
         p = item.post
@@ -208,3 +209,47 @@ def _clip(text: str, n: int) -> str:
             cut = cut[:idx]
             break
     return cut.rstrip(" ,，、") + "…"
+
+
+# X（twitter-text）的字符计权：这几段区间按 1 计，其余（中日韩文字、emoji）按 2 计。
+# 之前只按 len() 截断，残留的中文/表情会让实际计权超过 280，Buffer 直接拒收。
+_ONE_WEIGHT_RANGES = ((0, 4351), (8192, 8205), (8208, 8223), (8242, 8247))
+_ELLIPSIS = "…"
+
+
+def x_weight(text: str) -> int:
+    """按 X 的规则算一条推文的"字数"。"""
+    n = 0
+    for ch in text:
+        o = ord(ch)
+        for lo, hi in _ONE_WEIGHT_RANGES:
+            if lo <= o <= hi:
+                n += 1
+                break
+        else:
+            n += 2
+    return n
+
+
+def _clip_weighted(text: str, limit: int) -> str:
+    """按 X 计权截断，保证 Buffer 侧不会因超字数被拒。"""
+    text = (text or "").strip()
+    if limit <= 0 or x_weight(text) <= limit:
+        return text
+    budget = limit - x_weight(_ELLIPSIS)
+    out: list[str] = []
+    used = 0
+    for ch in text:
+        w = x_weight(ch)
+        if used + w > budget:
+            break
+        out.append(ch)
+        used += w
+    cut = "".join(out)
+    # 尽量在换行/句子/单词边界收尾，避免半个单词
+    for sep in ("\n", ". ", "!", "?", " ", ",", "，"):
+        idx = cut.rfind(sep)
+        if idx > len(cut) * 0.6:
+            cut = cut[: idx + (1 if sep == ". " else 0)]
+            break
+    return cut.rstrip(" ,，、\n") + _ELLIPSIS
