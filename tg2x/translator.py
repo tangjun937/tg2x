@@ -67,6 +67,14 @@ SYSTEM_PROMPT = (
     "output only the translation."
 )
 
+REWRITE_SYSTEM = (
+    "You are a news editor. Rewrite the given English news snippet so it expresses "
+    "the same facts in a different, natural way (paraphrase). Rules: keep every fact, "
+    "number, and name exactly; do not add or remove information; do not editorialize; "
+    "keep names of people/places/organizations unchanged; keep emoji and line breaks; "
+    "no preamble; output only the rewritten text."
+)
+
 
 class Translator:
     def __init__(self, cfg: Config):
@@ -105,6 +113,63 @@ class Translator:
             out = f"{out}\n\n{' '.join(dict.fromkeys(tags))}".strip()
         prefix = self.cfg.get("translate.prefix", "") or ""
         return f"{prefix}{out}".strip()
+
+    # ---------- 洗稿（LLM paraphrase） ----------
+    def rewrite(self, text: str) -> str:
+        """英文洗稿：把原文换一种表达。失败/未配置 key 时退回清理后的原文。"""
+        text = self._clean_en(text or "")
+        if not text or not self.cfg.get("rewrite.enabled", False):
+            return text
+        base = (self.cfg.get("rewrite.base_url") or "").rstrip("/")
+        key = self.cfg.env(self.cfg.get("rewrite.api_key_env", "DEEPSEEK_API_KEY"))
+        if not key:
+            log.warning("rewrite 已启用但未配置 %s，退回原文",
+                       self.cfg.get("rewrite.api_key_env", "DEEPSEEK_API_KEY"))
+            return text
+        model = self.cfg.get("rewrite.model", "deepseek-chat")
+        temperature = float(self.cfg.get("rewrite.temperature", 0.7) or 0.7)
+        payload = {
+            "model": model,
+            "temperature": temperature,
+            "messages": [
+                {"role": "system", "content": REWRITE_SYSTEM},
+                {"role": "user", "content": text},
+            ],
+        }
+        try:
+            r = self.session.post(
+                f"{base}/chat/completions",
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                timeout=int(self.cfg.get("rewrite.timeout", 60) or 60),
+            )
+            if r.status_code >= 400:
+                log.warning("LLM 洗稿失败 HTTP %s: %s，退回原文", r.status_code, r.text[:200])
+                return text
+            out = (r.json().get("choices") or [{}])[0].get("message", {}).get("content", "")
+            out = (out or "").strip()
+            return out or text
+        except Exception as e:  # noqa: BLE001
+            log.warning("LLM 洗稿异常 %s，退回原文", e)
+            return text
+
+    def _clean_en(self, text: str) -> str:
+        """英文频道尾巴清理：去 Source/来源 行、去 URL、去 Binance 等推广行。"""
+        lines = [ln.strip() for ln in text.split("\n")]
+        out: list[str] = []
+        for ln in lines:
+            if not ln:
+                continue
+            if re.match(r"^(Source|Via|来源)\s*[:：]", ln, re.IGNORECASE):
+                continue
+            if re.search(r"binance", ln, re.IGNORECASE):
+                continue
+            if URL_RE.fullmatch(ln):
+                continue  # 纯链接行
+            out.append(ln)
+        text = "\n".join(out).strip()
+        text = URL_RE.sub("", text).strip()  # 去掉行内残留 URL
+        return BLANK.sub("\n\n", text).strip()
 
     def _clean(self, text: str) -> str:
         """去掉频道推广尾巴 / 投稿联系方式等噪音。"""
