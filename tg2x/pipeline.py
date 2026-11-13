@@ -1,6 +1,7 @@
 """主流程：抓取 -> 去重 -> 归档 -> 翻译 -> 发布。"""
 from __future__ import annotations
 
+import json
 import logging
 import mimetypes
 import time
@@ -50,6 +51,7 @@ class Pipeline:
         fetcher = self._fetcher()
         posts = fetcher.fetch(limit=30)
         result["fetched"] = len(posts)
+        self._export_cn_feed(posts)
 
         if getattr(fetcher, "offset", None):
             self.store.set_meta("bot_offset", str(fetcher.offset))
@@ -133,6 +135,25 @@ class Pipeline:
         log.error("发 X 失败 [%s] %s", post.key, res.detail)
         self._items.append({"key": post.key, "text": item.final_text, "error": res.detail})
         return "failed"
+
+    # ---------- 中文原文导出 ----------
+    def _export_cn_feed(self, posts: list[TgPost]) -> None:
+        """把抓到的中文原文导出到 data/cn_feed.json，供本机国内分发器拉取。"""
+        try:
+            feed = {
+                "channel": self.channel,
+                "updated_at": now_iso(),
+                "posts": [
+                    {"message_id": p.message_id, "text": p.text,
+                     "posted_at": p.posted_at, "url": p.url}
+                    for p in posts if p.text.strip()
+                ],
+            }
+            fp = self.store.data_dir / "cn_feed.json"
+            fp.write_text(json.dumps(feed, ensure_ascii=False, indent=2),
+                          encoding="utf-8")
+        except Exception as e:  # noqa: BLE001
+            log.warning("导出中文原文失败：%s", e)
 
     # ---------- 跳过判定 ----------
     def _skip_reason(self, text: str) -> str:
