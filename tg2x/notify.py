@@ -71,6 +71,8 @@ class TgNotifier:
 
         if new == 0 and self.quiet_when_noop:
             return  # 没新帖就闭嘴，别每次定时任务都来一条
+        if published == 0 and failed == 0:
+            return  # 本轮全是广告/私密内容被过滤，不用打扰
 
         lines: list[str] = []
         if published:
@@ -79,8 +81,6 @@ class TgNotifier:
             lines.append(f"⚠️ 失败 {failed} 条，以下内容没有发出去：")
             for it in bad_items:
                 lines.append(f"· {it.get('key')}: {it['error'][:180]}")
-        if not published and not failed:
-            lines.append("本轮只有广告/重复内容，已全部跳过，没有发布。")
 
         if published and self.include_text and self.on_success:
             for it in ok_items[:3]:
