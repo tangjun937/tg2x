@@ -12,9 +12,9 @@ from .web import WebFetcher
 __all__ = ["Fetcher", "build_fetcher", "WebFetcher", "TelethonFetcher", "BotFetcher"]
 
 
-def build_fetcher(cfg: Config, offset: int = 0) -> Fetcher:
+def build_fetcher(cfg: Config, offset: int = 0, channel: str | None = None) -> Fetcher:
     backend = (cfg.get("fetch.backend") or "web").lower()
-    channel = cfg.get("channel") or ""
+    channel = channel or cfg.get("channel") or ""
     timeout = int(cfg.get("fetch.request_timeout", 20) or 20)
 
     if backend == "web":
