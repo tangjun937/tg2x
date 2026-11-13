@@ -20,8 +20,8 @@ publish:
   dry_run: false
   # buffer | command | http | dry_run
   target: "buffer"
-  # X 免费号上限 280。X 对中日韩文字/emoji 按 2 字计权，所以留出余量
-  max_len: 272
+  # XjianglinX 已开通蓝 V（X Premium），单条上限 25000 字，不再截断
+  max_len: 25000
   # 发文是否带上 Telegram 原文链接（false = 只发正文，不带链接）
   include_source_link: false
 
