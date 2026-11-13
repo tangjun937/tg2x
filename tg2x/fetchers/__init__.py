@@ -21,7 +21,8 @@ def build_fetcher(cfg: Config, offset: int = 0) -> Fetcher:
         return WebFetcher(channel, timeout=timeout,
                           user_agent=cfg.get("fetch.user_agent", "") or
                           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                          "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36")
+                          "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+                          strip_heading=bool(cfg.get("cleanup.strip_heading", False)))
 
     if backend == "telethon":
         api_id = os.environ.get("TG_API_ID", "")
