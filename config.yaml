@@ -3,6 +3,17 @@
 # 你关注的频道（不带 @）
 channel: "YMISH3333"
 
+# 多频道列表：所有频道的内容都发到同一个 X 账号（publish.buffer.channel_id）
+#   lang   : zh = 中文原文，翻译成英文再发；en = 英文原文，直接发（或洗稿后发）
+#   rewrite: true = 用 LLM 洗稿（换一种表达，保持事实不变）；false = 不洗稿
+channels:
+  - name: "YMISH3333"
+    lang: "zh"
+    rewrite: false
+  - name: "insider_uk_news"
+    lang: "en"
+    rewrite: true
+
 fetch:
   # web      : 抓 https://t.me/s/<channel> 网页版，零凭证，30s 轮询（你不是频道主，只能用这个或 telethon）
   # telethon : MTProto 用户会话，频道转私有 / 要秒级时用，需 api_id/api_hash + 手机号登录
@@ -68,6 +79,17 @@ translate:
   keep_hashtags: false
   strip_urls_from_translate: true
 
+# LLM 洗稿：把内容换一种表达（paraphrase），保持事实不变、不添油加醋
+rewrite:
+  enabled: true
+  # DeepSeek（OpenAI 兼容接口）
+  base_url: "https://api.deepseek.com/v1"
+  model: "deepseek-chat"
+  api_key_env: "DEEPSEEK_API_KEY"
+  # 温度：0.7 表达更多样，0.2 更贴近原文。洗稿建议 0.6-0.7
+  temperature: 0.7
+  timeout: 60
+
 # 原文清洗：频道尾巴的推广/投稿联系方式不要带到 X
 cleanup:
   remove_patterns:
@@ -111,6 +133,16 @@ cleanup:
     - "互推"
     - "广告位"
     - "推广位"
+    # 英文频道广告（insider_uk_news 里的赌场推广等）
+    - "free spins"
+    - "deposit bonus"
+    - "no deposit"
+    - "welcome bonus"
+    - "betting site"
+    - "sportsbook"
+    - "online casino"
+    - "crypto casino"
+    - "casino bonus"
   ad_weak_keywords:
     - "加群"
     - "进群"
