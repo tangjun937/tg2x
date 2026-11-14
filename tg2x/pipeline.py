@@ -18,6 +18,7 @@ from .notify import TgNotifier
 from .publisher import Publisher
 from .store import Store
 from .translator import Translator
+from .writer import NewsWriter
 
 log = logging.getLogger("tg2x")
 
@@ -30,6 +31,7 @@ class Pipeline:
         self.channels = self._parse_channels(cfg)
         self.store = Store(cfg.path_of("storage.data_dir", "data"))
         self.translator = Translator(cfg)
+        self.writer = NewsWriter(cfg)
         self.publisher = Publisher(cfg)
         if dry_run is not None:
             self.publisher.dry_run = dry_run
@@ -74,8 +76,38 @@ class Pipeline:
     def cycle(self, publish: bool = True) -> dict:
         result = {"fetched": 0, "new": 0, "published": 0, "failed": 0, "skipped": 0}
         self._items = []
+
+        # 1. 收集所有频道的新帖
+        candidates: list[tuple[dict, TgPost]] = []
         for ch in self.channels:
-            self._cycle_channel(ch, result, publish)
+            for p in self._gather_channel(ch, result):
+                candidates.append((ch, p))
+
+        # 2. 影响排序（DeepSeek），只发影响大的前 N 篇
+        ranked = candidates
+        if len(candidates) > 1:
+            ch_map = {id(p): ch for ch, p in candidates}
+            posts = [p for _, p in candidates]
+            ordered = self.writer.rank(posts)
+            if len(ordered) == len(posts):
+                ranked = [(ch_map[id(p)], p) for p in ordered]
+        if len(ranked) > self.max_per_cycle:
+            log.info("本轮 %d 篇新帖，按影响排序后只发前 %d 篇",
+                     len(ranked), self.max_per_cycle)
+            ranked = ranked[: self.max_per_cycle]
+
+        # 3. 逐篇处理（第 1 篇立即发，第 2 篇起排到 60 分钟后）
+        for idx, (ch, post) in enumerate(ranked):
+            result["new"] += 1
+            status = "failed"
+            try:
+                status = self._handle(post, ch, publish=publish, position=idx)
+            except Exception as e:  # noqa: BLE001
+                log.exception("处理失败 %s: %s", post.key, e)
+                self.store.mark(post.channel, post.message_id, "failed", error=str(e)[:500])
+                self._items.append({"key": post.key, "text": "", "error": str(e)[:300]})
+            result[status] += 1
+
         # 每轮结束清理：每频道只保留最近 N 条，防止库无限增长
         if self.prune_keep > 0:
             removed = self.store.prune(self.prune_keep)
@@ -85,7 +117,8 @@ class Pipeline:
         self.notifier.report(result, self._items)
         return result
 
-    def _cycle_channel(self, ch: dict, result: dict, publish: bool) -> None:
+    def _gather_channel(self, ch: dict, result: dict) -> list[TgPost]:
+        """抓取某频道并返回本轮新帖（首次运行只建基线，返回空）。"""
         fetcher = self._fetcher(ch["name"])
         posts = fetcher.fetch(limit=30)
         result["fetched"] += len(posts)
@@ -107,26 +140,11 @@ class Pipeline:
             result["skipped"] += len(posts)
             log.info("频道 @%s 首次启动：已把 %d 条历史帖标记为基线，不发布",
                      ch["name"], len(posts))
-            return
+            return []
 
         fresh = [p for p in posts if not self.store.seen(p.channel, p.message_id)]
-        # 从新到旧：只搬最新的，不追旧帖（陈旧资讯发出去没意义）
         fresh.sort(key=lambda p: p.message_id, reverse=True)
-        if len(fresh) > self.max_per_cycle:
-            log.info("频道 @%s 本轮新帖 %d 条，超过上限 %d，只处理最新的 %d 条",
-                     ch["name"], len(fresh), self.max_per_cycle, self.max_per_cycle)
-            fresh = fresh[: self.max_per_cycle]
-
-        for idx, post in enumerate(fresh):
-            result["new"] += 1
-            status = "failed"
-            try:
-                status = self._handle(post, ch, publish=publish, position=idx)
-            except Exception as e:  # noqa: BLE001
-                log.exception("处理失败 %s: %s", post.key, e)
-                self.store.mark(post.channel, post.message_id, "failed", error=str(e)[:500])
-                self._items.append({"key": post.key, "text": "", "error": str(e)[:300]})
-            result[status] += 1
+        return fresh
 
     def _handle(self, post: TgPost, ch: dict, publish: bool = True, position: int = 0) -> str:
         """返回 published / skipped / failed 三种状态之一。"""
@@ -146,12 +164,15 @@ class Pipeline:
 
         text_en = ""
         if post.text.strip():
-            if ch["lang"] == "en":
-                # 英文频道：原文直接发，或洗稿改写后发
-                text_en = (self.translator.rewrite(post.text) if ch["rewrite"]
-                           else self.translator._clean_en(post.text))
-            else:
-                text_en = self.translator.translate(post.text)
+            # DeepSeek 写作（洗稿 + 互动形式 + 写作总册）；失败退回原翻译/清洗
+            text_en = self.writer.write(post.text)
+            if not text_en:
+                text_en = (self.translator._clean_en(post.text) if ch["lang"] == "en"
+                           else self.translator.translate(post.text))
+        # 统一品牌前缀（如 "FinBrief Alert: "）
+        prefix = (self.cfg.get("translate.prefix", "") or "").strip()
+        if prefix and text_en and not text_en.startswith(prefix):
+            text_en = f"{prefix}{text_en}"
 
         # 关键词去重：与最近已发内容高度重复则跳过（纯规则，不用 AI）
         if self.dedup_enabled and text_en and is_duplicate(
