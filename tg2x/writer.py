@@ -106,6 +106,70 @@ def _topic_level(text) -> int:
     return 3
 
 
+def _ensure_paragraphs(text: str, max_sentences: int = 3) -> str:
+    """强制分段：单段长文本按句切分，每段最多 max_sentences 句，段间空一行。
+
+    已含空行的多段文本保持原样；短文本（不足一段）不强行拆。
+    """
+    text = (text or "").strip()
+    if not text or "\n\n" in text:
+        return text
+    sentences = re.split(r"(?<=[.!?。！？])\s+", text)
+    paragraphs: list[str] = []
+    buf: list[str] = []
+    for s in sentences:
+        s = s.strip()
+        if not s:
+            continue
+        buf.append(s)
+        if len(buf) >= max_sentences:
+            paragraphs.append(" ".join(buf))
+            buf = []
+    if buf:
+        paragraphs.append(" ".join(buf))
+    if len(paragraphs) <= 1:
+        return text
+    return "\n\n".join(paragraphs)
+
+
+# 中国政治敏感（最高原则，每次发文前必查，命中一律跳过）
+CHINA_POLITICAL = [
+    "xi jinping", "chinese communist party", "ccp", "taiwan independence",
+    "hong kong protest", "tiananmen", "uyghur", "south china sea dispute",
+    "chinese government", "communist party", "chinese president",
+    "people's liberation army", "falun gong", "diaoyu islands", "senkaku islands",
+    "习近平", "中国共产党", "中共", "台独", "港独", "疆独", "藏独",
+    "南海争端", "天安门", "六四", "法轮功", "中国军方", "解放军",
+    "钓鱼岛", "台湾独立", "香港独立", "西藏独立", "新疆独立", "中国政府", "中国领导人",
+]
+
+# AI 类关键词（只发 AI 类内容；非 AI 类跳过）
+AI_KEYWORDS = [
+    "artificial intelligence", "chatgpt", "openai", "claude", "gemini", "gpt",
+    "llm", "machine learning", "deep learning", "neural", "anthropic", "deepseek",
+    "midjourney", "stable diffusion", "agi", "copilot", "large language model",
+    "nvidia", "gpu", "chip", "chips", "semiconductor", "tsmc", "amd", "intel",
+    "人工智能", "大模型", "机器学习", "深度学习", "神经网络", "生成式", "模型",
+    "芯片", "半导体", "算力", "英伟达", "台积电", "处理器",
+]
+
+_AI_WORD_RE = re.compile(r"\bai\b", re.IGNORECASE)
+
+
+def content_filter_reason(text: str) -> str:
+    """内容合规过滤，返回原因（空串=通过）。
+
+    最高原则：时政类不得有任何中国相关内容，命中即跳。
+    定位：只发 AI 类内容，非 AI 类跳。
+    """
+    low = (text or "").lower()
+    if any(w in low for w in CHINA_POLITICAL):
+        return "china-political"
+    if _AI_WORD_RE.search(text or "") or any(w in low for w in AI_KEYWORDS):
+        return ""
+    return "non-ai"
+
+
 class NewsWriter:
     def __init__(self, cfg: Config):
         self.cfg = cfg
@@ -144,22 +208,54 @@ class NewsWriter:
         if not self.available() or not (text or "").strip():
             return ""
         try:
-            return self._chat(WRITE_SYSTEM, (text or "").strip()).strip()
+            out = self._chat(WRITE_SYSTEM, (text or "").strip()).strip()
+            return _ensure_paragraphs(out)
         except Exception as e:  # noqa: BLE001
             log.warning("DeepSeek 写作失败：%s", e)
             return ""
 
     def rank(self, posts, topic_first: bool = False) -> list:
-        """按优先级排序。
+        """先按优先级排序（媒体/主题），同优先级内由大模型精排影响大小。
 
         默认（topic_first=False）：媒体优先 视频 > 图文 > 无图冲突事件 > 普通事件。
         topic_first=True：主题优先 github > 传统金融 > 虚拟货币，同主题内再按媒体。
-        同优先级按 message_id 从新到旧。
         """
         if len(posts) <= 1:
             return posts
         if topic_first:
-            key = lambda p: (_topic_level(p.text), _media_level(p), -p.message_id)
+            key = lambda p: (_topic_level(p.text), _media_level(p))
         else:
-            key = lambda p: (_media_level(p), -p.message_id)
-        return sorted(posts, key=key)
+            key = lambda p: (_media_level(p),)
+        posts = sorted(posts, key=key)
+        if not self.available():
+            return posts
+        # 同优先级分组，组内用大模型按影响精排
+        groups: list[list] = []
+        current = [posts[0]]
+        for p in posts[1:]:
+            if key(p) == key(current[0]):
+                current.append(p)
+            else:
+                groups.append(current)
+                current = [p]
+        groups.append(current)
+        result: list = []
+        for g in groups:
+            result.extend(self._rank_by_impact(g))
+        return result
+
+    def _rank_by_impact(self, posts) -> list:
+        """组内用 DeepSeek 按影响大小排序。失败返回原顺序。"""
+        if len(posts) <= 1:
+            return posts
+        items = "\n".join(f"[{i}] {p.text[:220]}" for i, p in enumerate(posts))
+        try:
+            out = self._chat(RANK_SYSTEM, items)
+            m = re.search(r"\[[\d,\s]+\]", out)
+            if not m:
+                return posts
+            idx = json.loads(m.group(0))
+            return [posts[i] for i in idx if isinstance(i, int) and 0 <= i < len(posts)]
+        except Exception as e:  # noqa: BLE001
+            log.warning("DeepSeek 组内影响排序失败：%s", e)
+            return posts
