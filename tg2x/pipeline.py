@@ -18,7 +18,7 @@ from .notify import TgNotifier
 from .publisher import Publisher
 from .store import Store
 from .translator import Translator
-from .writer import NewsWriter
+from .writer import NewsWriter, content_filter_reason
 
 log = logging.getLogger("tg2x")
 
@@ -235,7 +235,10 @@ class Pipeline:
 
     # ---------- 跳过判定 ----------
     def _skip_reason(self, text: str) -> str:
-        """黑名单词或广告特征命中就返回原因，否则返回空串。"""
+        """合规过滤（最高原则：中国政治、只发 AI）+ 黑名单 + 广告特征。"""
+        cr = content_filter_reason(text)
+        if cr:
+            return f"合规过滤:{cr}"
         hit = self._blocked_by(text)
         if hit:
             return f"屏蔽词:{hit}"
