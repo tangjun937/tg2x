@@ -172,8 +172,10 @@ class Pipeline:
 
         text_en = ""
         if post.text.strip():
-            # DeepSeek 写作（洗稿 + 互动形式 + 写作总册）；失败退回原翻译/清洗
-            text_en = self.writer.write(post.text)
+            # 先清理原文（去标题、去尾巴、去信源），再交给 DeepSeek 写作
+            clean = (self.translator._clean_en(post.text) if ch["lang"] == "en"
+                     else self.translator._clean(post.text))
+            text_en = self.writer.write(clean)
             if not text_en:
                 text_en = (self.translator._clean_en(post.text) if ch["lang"] == "en"
                            else self.translator.translate(post.text))
