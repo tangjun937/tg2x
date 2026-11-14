@@ -93,14 +93,18 @@ class WebFetcher(Fetcher):
             posted_at = parse_tg_time(time_el["datetime"]) if time_el else ""
 
             media: list[str] = []
+            has_photo = False
             for el in wrap.select(".tgme_widget_message_photo_wrap"):
                 m = URL_RE.search(el.get("style") or "")
                 if m:
                     media.append(m.group(1))
+                    has_photo = True
+            has_video = False
             for el in wrap.select("a.tgme_widget_message_video"):
                 href = el.get("href")
                 if href:
                     media.append(href)
+                    has_video = True
 
             out.append(
                 TgPost(
@@ -110,6 +114,8 @@ class WebFetcher(Fetcher):
                     posted_at=posted_at,
                     url=f"https://t.me/{ch}/{message_id}",
                     media_urls=media,
+                    has_video=has_video,
+                    has_photo=has_photo,
                     source=self.name,
                 )
             )
