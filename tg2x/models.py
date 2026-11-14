@@ -17,6 +17,8 @@ class TgPost:
     url: str = ""
     media_urls: list[str] = field(default_factory=list)
     media_files: list[str] = field(default_factory=list)
+    has_video: bool = False
+    has_photo: bool = False
     raw_html: str = ""
     source: str = ""  # web | telethon | bot
 
