@@ -13,6 +13,9 @@ channels:
   - name: "disaster_news"
     lang: "en"
     rewrite: false
+  - name: "xinwen4588"
+    lang: "zh"
+    rewrite: false
 
 fetch:
   # web      : 抓 https://t.me/s/<channel> 网页版，零凭证，30s 轮询（你不是频道主，只能用这个或 telethon）
