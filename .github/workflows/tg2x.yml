@@ -20,6 +20,11 @@ on:
           - run       # 正常跑（有新帖才发，每频道最新1条）
           - dry_run   # 只打印不发
           - preview   # 释放最新一条并发送（预览效果）
+      channel:
+        description: 'preview 时指定频道（留空=disaster_news）'
+        type: string
+        default: ''
+        required: false
 
 permissions:
   contents: write
@@ -71,7 +76,7 @@ jobs:
               ;;
             preview)
               echo "== 预览：释放最新一条并发送 =="
-              python run.py preview --channel disaster_news
+              python run.py preview --channel "${{ inputs.channel || 'disaster_news' }}"
               ;;
             *)
               python run.py once
