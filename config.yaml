@@ -16,6 +16,9 @@ channels:
   - name: "xinwen4588"
     lang: "zh"
     rewrite: false
+  - name: "BREAKING_NEWS_TG"
+    lang: "en"
+    rewrite: false
 
 fetch:
   # web      : 抓 https://t.me/s/<channel> 网页版，零凭证，30s 轮询（你不是频道主，只能用这个或 telethon）
@@ -23,8 +26,8 @@ fetch:
   # bot      : 仅频道的管理员可用（把 bot 设为频道管理员），你不在这种情况
   backend: "web"
   interval_seconds: 30
-  # 单次最多处理多少条新帖：1 = 每轮只搬最新那条
-  max_per_cycle: 1
+  # 每轮最多发多少篇（合并所有频道新帖后，按影响排序取前 N 篇）
+  max_per_cycle: 2
   request_timeout: 20
 
 publish:
@@ -47,9 +50,9 @@ publish:
     channel_id: "6ae73010e29c69a17126cbf5"
     # shareNow（立即发）| addToQueue（进 Buffer 队列的下一个空档）| customScheduled
     mode: "shareNow"
-    # 同批次的第 2 条起，自动排到 10-15 分钟后的随机时刻再发（避免连发被判刷屏）
-    spacing_min_minutes: 10
-    spacing_max_minutes: 15
+    # 同批次的第 2 条起，自动排到 60 分钟后再发（间隔至少 60 分钟）
+    spacing_min_minutes: 60
+    spacing_max_minutes: 60
     # telegram_url : 直接把 Telegram CDN 图片链接传给 Buffer（零成本，默认）
     # none         : 只发文字
     media: "telegram_url"
@@ -82,14 +85,13 @@ translate:
   keep_hashtags: false
   strip_urls_from_translate: true
 
-# LLM 洗稿：把内容换一种表达（paraphrase），保持事实不变、不添油加醋
-rewrite:
+# DeepSeek 写作引擎：洗稿 + 互动形式 + 写作要求总册核心原则
+writer:
   enabled: true
   # DeepSeek（OpenAI 兼容接口）
   base_url: "https://api.deepseek.com/v1"
   model: "deepseek-chat"
   api_key_env: "DEEPSEEK_API_KEY"
-  # 温度：0.7 表达更多样，0.2 更贴近原文。洗稿建议 0.6-0.7
   temperature: 0.7
   timeout: 60
 
