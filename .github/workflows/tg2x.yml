@@ -71,7 +71,7 @@ jobs:
               ;;
             preview)
               echo "== 预览：释放最新一条并发送 =="
-              python run.py preview --channel insider_uk_news
+              python run.py preview --channel disaster_news
               ;;
             *)
               python run.py once
