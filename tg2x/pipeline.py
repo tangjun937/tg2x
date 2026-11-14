@@ -78,10 +78,17 @@ class Pipeline:
         result = {"fetched": 0, "new": 0, "published": 0, "failed": 0, "skipped": 0}
         self._items = []
 
-        # 1. 收集所有频道的新帖
+        # 1. 收集所有频道的新帖（先做合规过滤，避免占用发文名额）
         candidates: list[tuple[dict, TgPost]] = []
         for ch in self.channels:
             for p in self._gather_channel(ch, result):
+                cr = content_filter_reason(p.text)
+                if cr:
+                    log.info("跳过 [%s]：合规过滤:%s", p.key, cr)
+                    self.store.record(p, "skipped")
+                    self.store.archive(p, {"reason": f"合规过滤:{cr}"})
+                    result["skipped"] += 1
+                    continue
                 candidates.append((ch, p))
 
         # 2. 影响排序（DeepSeek），只发影响大的前 N 篇
