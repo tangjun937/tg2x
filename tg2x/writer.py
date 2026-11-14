@@ -147,13 +147,14 @@ CHINA_POLITICAL = [
 AI_KEYWORDS = [
     "artificial intelligence", "chatgpt", "openai", "claude", "gemini", "gpt",
     "llm", "machine learning", "deep learning", "neural", "anthropic", "deepseek",
-    "midjourney", "stable diffusion", "agi", "copilot", "large language model",
+    "midjourney", "stable diffusion", "copilot", "large language model",
     "nvidia", "gpu", "chip", "chips", "semiconductor", "tsmc", "amd", "intel",
     "人工智能", "大模型", "机器学习", "深度学习", "神经网络", "生成式", "模型",
     "芯片", "半导体", "算力", "英伟达", "台积电", "处理器",
 ]
 
 _AI_WORD_RE = re.compile(r"\bai\b", re.IGNORECASE)
+_AGI_WORD_RE = re.compile(r"\bagi\b", re.IGNORECASE)
 
 
 def content_filter_reason(text: str) -> str:
@@ -165,7 +166,8 @@ def content_filter_reason(text: str) -> str:
     low = (text or "").lower()
     if any(w in low for w in CHINA_POLITICAL):
         return "china-political"
-    if _AI_WORD_RE.search(text or "") or any(w in low for w in AI_KEYWORDS):
+    if (_AI_WORD_RE.search(text or "") or _AGI_WORD_RE.search(text or "")
+            or any(w in low for w in AI_KEYWORDS)):
         return ""
     return "non-ai"
 
