@@ -78,7 +78,10 @@ class Pipeline:
             self._cycle_channel(ch, result, publish)
         # 每轮结束清理：每频道只保留最近 N 条，防止库无限增长
         if self.prune_keep > 0:
-            self.store.prune(self.prune_keep)
+            removed = self.store.prune(self.prune_keep)
+            if removed:
+                log.info("清理去重库：删除 %d 条旧记录（每频道保留最近 %d 条）",
+                         removed, self.prune_keep)
         self.notifier.report(result, self._items)
         return result
 
