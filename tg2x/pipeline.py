@@ -11,6 +11,7 @@ import requests
 
 from .adfilter import ad_reason
 from .config import Config
+from .dedup import is_duplicate
 from .fetchers import build_fetcher
 from .models import TgPost, TransPost, now_iso
 from .notify import TgNotifier
@@ -37,6 +38,10 @@ class Pipeline:
         self._items: list[dict] = []
         self.max_per_cycle = int(cfg.get("fetch.max_per_cycle", 5) or 5)
         self.archive_media = bool(cfg.get("storage.archive_media", True))
+        self.dedup_enabled = bool(cfg.get("cleanup.dedup_enabled", True))
+        self.dedup_window = int(cfg.get("cleanup.dedup_window", 10) or 10)
+        self.dedup_threshold = float(cfg.get("cleanup.dedup_threshold", 0.6) or 0.6)
+        self.prune_keep = int(cfg.get("storage.prune_keep", 10) or 10)
 
     @staticmethod
     def _parse_channels(cfg: Config) -> list[dict]:
@@ -71,6 +76,9 @@ class Pipeline:
         self._items = []
         for ch in self.channels:
             self._cycle_channel(ch, result, publish)
+        # 每轮结束清理：每频道只保留最近 N 条，防止库无限增长
+        if self.prune_keep > 0:
+            self.store.prune(self.prune_keep)
         self.notifier.report(result, self._items)
         return result
 
@@ -141,6 +149,16 @@ class Pipeline:
                            else self.translator._clean_en(post.text))
             else:
                 text_en = self.translator.translate(post.text)
+
+        # 关键词去重：与最近已发内容高度重复则跳过（纯规则，不用 AI）
+        if self.dedup_enabled and text_en and is_duplicate(
+                text_en, self.store.recent_published(self.dedup_window),
+                self.dedup_threshold):
+            log.info("跳过 [%s]：与最近已发内容重复", post.key)
+            self.store.record(post, "skipped")
+            self.store.archive(post, {"reason": "duplicate-keyword"})
+            return "skipped"
+
         item = TransPost(post=post, text_en=text_en)
         item.final_text = self.publisher.build_text(item)
         self.store.mark(post.channel, post.message_id, "translated", text_en=text_en)
