@@ -44,6 +44,7 @@ class Pipeline:
         self.dedup_window = int(cfg.get("cleanup.dedup_window", 10) or 10)
         self.dedup_threshold = float(cfg.get("cleanup.dedup_threshold", 0.6) or 0.6)
         self.prune_keep = int(cfg.get("storage.prune_keep", 10) or 10)
+        self.topic_first = bool(cfg.get("rank.topic_first", False))
 
     @staticmethod
     def _parse_channels(cfg: Config) -> list[dict]:
@@ -88,7 +89,7 @@ class Pipeline:
         if len(candidates) > 1:
             ch_map = {id(p): ch for ch, p in candidates}
             posts = [p for _, p in candidates]
-            ordered = self.writer.rank(posts)
+            ordered = self.writer.rank(posts, topic_first=self.topic_first)
             if len(ordered) == len(posts):
                 ranked = [(ch_map[id(p)], p) for p in ordered]
         if len(ranked) > self.max_per_cycle:
