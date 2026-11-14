@@ -93,7 +93,7 @@ class Pipeline:
             if len(ordered) == len(posts):
                 ranked = [(ch_map[id(p)], p) for p in ordered]
         if len(ranked) > self.max_per_cycle:
-            log.info("本轮 %d 篇新帖，按影响排序后只发前 %d 篇",
+            log.info("本轮 %d 篇新帖，按优先级排序后只发前 %d 篇",
                      len(ranked), self.max_per_cycle)
             ranked = ranked[: self.max_per_cycle]
 
