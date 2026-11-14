@@ -170,8 +170,8 @@ class Pipeline:
                 text_en = (self.translator._clean_en(post.text) if ch["lang"] == "en"
                            else self.translator.translate(post.text))
         # 统一品牌前缀（如 "FinBrief Alert: "）
-        prefix = (self.cfg.get("translate.prefix", "") or "").strip()
-        if prefix and text_en and not text_en.startswith(prefix):
+        prefix = self.cfg.get("translate.prefix", "") or ""
+        if prefix and text_en and not text_en.startswith(prefix.rstrip()):
             text_en = f"{prefix}{text_en}"
 
         # 关键词去重：与最近已发内容高度重复则跳过（纯规则，不用 AI）
