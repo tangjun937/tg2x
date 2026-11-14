@@ -106,6 +106,31 @@ class Store:
         ).fetchall()
         return {r["status"]: r["c"] for r in rows}
 
+    def recent_published(self, limit: int = 10) -> list[str]:
+        """最近 limit 条已发布内容的英文文本（用于关键词去重）。"""
+        rows = self.conn.execute(
+            "SELECT text_en FROM messages WHERE status='published' AND text_en IS NOT NULL "
+            "ORDER BY message_id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [r["text_en"] for r in rows if r["text_en"]]
+
+    def prune(self, keep: int = 10) -> int:
+        """每个频道只保留最近 keep 条记录，删除更早的（避免库无限增长）。"""
+        deleted = 0
+        rows = self.conn.execute("SELECT DISTINCT channel FROM messages").fetchall()
+        for r in rows:
+            ch = r["channel"]
+            cur = self.conn.execute(
+                """DELETE FROM messages WHERE channel=? AND message_id NOT IN (
+                       SELECT message_id FROM messages WHERE channel=?
+                       ORDER BY message_id DESC LIMIT ?)""",
+                (ch, ch, keep),
+            )
+            deleted += cur.rowcount
+        self.conn.commit()
+        return deleted
+
     # ---------- 原文归档 ----------
     def archive(self, post: TgPost, extra: dict | None = None) -> Path:
         day = (post.posted_at or now_iso())[:10]
