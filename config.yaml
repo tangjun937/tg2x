@@ -10,9 +10,9 @@ channels:
   - name: "YMISH3333"
     lang: "zh"
     rewrite: false
-  - name: "insider_uk_news"
+  - name: "disaster_news"
     lang: "en"
-    rewrite: true
+    rewrite: false
 
 fetch:
   # web      : 抓 https://t.me/s/<channel> 网页版，零凭证，30s 轮询（你不是频道主，只能用这个或 telethon）
@@ -133,7 +133,7 @@ cleanup:
     - "互推"
     - "广告位"
     - "推广位"
-    # 英文频道广告（insider_uk_news 里的赌场推广等）
+    # 英文频道广告（赌场/博彩推广等）
     - "free spins"
     - "deposit bonus"
     - "no deposit"
@@ -161,10 +161,17 @@ cleanup:
   # 弱广告词累计命中多少个才判定为广告
   ad_weak_threshold: 2
 
+  # 关键词去重（纯规则、不用 AI）：与最近已发内容关键词重叠度过高则跳过，避免重复发
+  dedup_enabled: true
+  dedup_window: 10       # 对比最近多少条已发内容
+  dedup_threshold: 0.6   # Jaccard 相似度阈值（0-1，越大越严格，0.6=需60%关键词重叠）
+
 storage:
   data_dir: "data"
   # 原文 + 图片归档到本地，保证"复制下来"这一步不丢东西
   archive_media: true
+  # 每频道只保留最近多少条去重记录，更早的自动删除（防止库无限增长）。0 = 不清理
+  prune_keep: 10
 
 # 跑完通过你的 bot 给自己发一条回执（不是用来读频道的，bot 进不了别人的频道）
 notify:
