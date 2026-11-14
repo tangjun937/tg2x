@@ -62,6 +62,49 @@ RANK_SYSTEM = (
     "Do not include any other text."
 )
 
+# 冲突事件关键词（中英）：无图时优先于普通事件
+CONFLICT_WORDS = [
+    "war", "conflict", "attack", "strike", "protest", "riot", "clash", "bombing",
+    "invasion", "killed", "shooting", "coup", "battle", "missile", "airstrike",
+    "ceasefire", "casualt", "explosion",
+    "战争", "冲突", "袭击", "罢工", "抗议", "暴乱", "爆炸", "入侵", "枪击", "政变",
+    "导弹", "空袭", "伤亡", "交火", "停火",
+]
+
+# 主题分类关键词（需求：github > 传统金融 > 虚拟货币）
+TOPIC_GITHUB = ["github", "repository", "open source", "open-source", "repo",
+                "pull request", "gitlab", "开源", "代码仓库", "代码"]
+TOPIC_FINANCE = ["stock", "stocks", "equity", "bond", "bonds", "bank", "federal reserve",
+                 "interest rate", "ipo", "earnings", "wall street", "nasdaq", "s&p",
+                 "股市", "股票", "利率", "财报", "央行", "联储", "债券", "银行", "交易所", "基金"]
+TOPIC_CRYPTO = ["crypto", "bitcoin", "btc", "ethereum", "eth", "token", "blockchain",
+                "defi", "stablecoin", "币", "比特币", "加密货币", "以太坊", "稳定币", "区块链",
+                "数字货币", "钱包"]
+
+
+def _media_level(post) -> int:
+    """媒体优先级：视频0 > 图文1 > 无图冲突事件2 > 普通事件3。"""
+    if getattr(post, "has_video", False):
+        return 0
+    if getattr(post, "has_photo", False):
+        return 1
+    low = (post.text or "").lower()
+    if any(w in low for w in CONFLICT_WORDS):
+        return 2
+    return 3
+
+
+def _topic_level(text) -> int:
+    """主题优先级：github0 > 传统金融1 > 虚拟货币2 > 其他3。"""
+    low = (text or "").lower()
+    if any(w in low for w in TOPIC_GITHUB):
+        return 0
+    if any(w in low for w in TOPIC_FINANCE):
+        return 1
+    if any(w in low for w in TOPIC_CRYPTO):
+        return 2
+    return 3
+
 
 class NewsWriter:
     def __init__(self, cfg: Config):
@@ -106,18 +149,17 @@ class NewsWriter:
             log.warning("DeepSeek 写作失败：%s", e)
             return ""
 
-    def rank(self, posts) -> list:
-        """按影响从大到小排序 posts，返回排序后的列表。失败返回原顺序。"""
-        if len(posts) <= 1 or not self.available():
+    def rank(self, posts, topic_first: bool = False) -> list:
+        """按优先级排序。
+
+        默认（topic_first=False）：媒体优先 视频 > 图文 > 无图冲突事件 > 普通事件。
+        topic_first=True：主题优先 github > 传统金融 > 虚拟货币，同主题内再按媒体。
+        同优先级按 message_id 从新到旧。
+        """
+        if len(posts) <= 1:
             return posts
-        items = "\n".join(f"[{i}] {p.text[:220]}" for i, p in enumerate(posts))
-        try:
-            out = self._chat(RANK_SYSTEM, items)
-            m = re.search(r"\[[\d,\s]+\]", out)
-            if not m:
-                return posts
-            idx = json.loads(m.group(0))
-            return [posts[i] for i in idx if isinstance(i, int) and 0 <= i < len(posts)]
-        except Exception as e:  # noqa: BLE001
-            log.warning("DeepSeek 影响排序失败：%s", e)
-            return posts
+        if topic_first:
+            key = lambda p: (_topic_level(p.text), _media_level(p), -p.message_id)
+        else:
+            key = lambda p: (_media_level(p), -p.message_id)
+        return sorted(posts, key=key)
