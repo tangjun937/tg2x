@@ -85,28 +85,31 @@ def _topic_level(text) -> int:
 
 
 def _ensure_paragraphs(text: str, max_sentences: int = 3) -> str:
-    """强制分段：单段长文本按句切分，每段最多 max_sentences 句，段间空一行。
+    """强制分段：正文与观点（最后一句）之间空一行；正文多句时按 max_sentences 分段。
 
-    已含空行的多段文本保持原样；短文本（不足一段）不强行拆。
+    规则：
+    - 已有空行（\\n\\n）的多段文本：只做换行规范化，原样保留结构。
+    - 无空行的文本：按句切分，最后一句当作「观点」单独成段，其余作为「正文」
+      每 max_sentences 句一段；段间一律空一行。
     """
     text = (text or "").strip()
-    if not text or "\n\n" in text:
+    if not text:
         return text
-    sentences = re.split(r"(?<=[.!?。！？])\s+", text)
+    # 规范化换行：\r\n / \r → \n
+    text = re.sub(r"\r\n?", "\n", text)
+    if "\n\n" in text:
+        # 已有空行：只把 3 个以上连续换行压成 1 个空行
+        return re.sub(r"\n{3,}", "\n\n", text)
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?。！？])\s+", text) if s.strip()]
+    if len(sentences) <= 1:
+        return text
+    # 最后一句 = 观点，单独成段；其余 = 正文
+    body = sentences[:-1]
+    opinion = sentences[-1]
     paragraphs: list[str] = []
-    buf: list[str] = []
-    for s in sentences:
-        s = s.strip()
-        if not s:
-            continue
-        buf.append(s)
-        if len(buf) >= max_sentences:
-            paragraphs.append(" ".join(buf))
-            buf = []
-    if buf:
-        paragraphs.append(" ".join(buf))
-    if len(paragraphs) <= 1:
-        return text
+    for i in range(0, len(body), max_sentences):
+        paragraphs.append(" ".join(body[i:i + max_sentences]))
+    paragraphs.append(opinion)
     return "\n\n".join(paragraphs)
 
 
