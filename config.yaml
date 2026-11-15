@@ -102,6 +102,8 @@ cleanup:
   content_filter: false
   # 只搬带图/视频的内容，纯文字长文跳过。默认关闭；宠物视频类账号设为 true
   media_only: false
+  # 新鲜度过滤：只发最近 N 小时内的帖子，超过的旧帖直接跳过（防止频道更新慢时补发旧闻）
+  max_age_hours: 24
   remove_patterns:
     - '关注[^\n]*?频道[^\n]*'
     - '投稿\s*[:：]\s*@\w+'
