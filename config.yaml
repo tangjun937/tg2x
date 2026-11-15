@@ -100,6 +100,8 @@ writer:
 cleanup:
   # 内容合规过滤（中国政治敏感 + 关于中国只发 AI 类）。tg2x 关闭（翻译直发，不过滤）
   content_filter: false
+  # 只搬带图/视频的内容，纯文字长文跳过。默认关闭；宠物视频类账号设为 true
+  media_only: false
   remove_patterns:
     - '关注[^\n]*?频道[^\n]*'
     - '投稿\s*[:：]\s*@\w+'
