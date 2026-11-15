@@ -85,10 +85,10 @@ translate:
   keep_hashtags: false
   strip_urls_from_translate: true
 
-# DeepSeek 写作引擎：洗稿 + 互动形式 + 写作要求总册核心原则
-# tg2x（XjianglinX）：关闭，扫描到内容后直接翻译发送（不洗稿）
+# DeepSeek 写作引擎：缩写至 300-400 字 + 有观点
+# tg2x（XjianglinX）：开启，AI 缩写并加观点
 writer:
-  enabled: false
+  enabled: true
   # DeepSeek（OpenAI 兼容接口）
   base_url: "https://api.deepseek.com/v1"
   model: "deepseek-chat"
