@@ -167,6 +167,23 @@ def image_assets(urls: list[str], limit: int = 4) -> list[dict]:
     return out
 
 
+def video_assets(video_urls: list[str], thumbs: list[str] | None = None,
+                 limit: int = 1) -> list[dict]:
+    """把公网视频 URL 列表转成 Buffer 的 assets 结构（video + 缩略图）。"""
+    out: list[dict] = []
+    thumbs = thumbs or []
+    for i, u in enumerate(video_urls):
+        if not u or not u.startswith("http"):
+            continue
+        asset: dict[str, Any] = {"video": {"url": u}}
+        if i < len(thumbs) and thumbs[i].startswith("http"):
+            asset["video"]["thumbnailUrl"] = thumbs[i]
+        out.append(asset)
+        if len(out) >= limit:
+            break
+    return out
+
+
 def load_channel_cache(path: Path) -> dict | None:
     try:
         return json.loads(Path(path).read_text(encoding="utf-8"))
