@@ -35,6 +35,31 @@ def _strip_heading(text_el):
     b.extract()
 
 
+def _strip_channel_link_tail(text_el):
+    """去掉文本末尾的 t.me 频道链接尾巴（连同链接文字 + 前面的短 emoji）。
+
+    宠物频道等每条末尾带「[频道名](https://t.me/xxx)」引流链接，get_text 会把
+    链接文字（如俄语频道名「Пёсик」）留下来，翻译后变成「Doggie」之类噪音。
+    """
+    for a in reversed(text_el.find_all("a")):
+        href = (a.get("href") or "").lower()
+        if "t.me/" not in href and "telegram.me/" not in href:
+            continue
+        # 只处理「末尾」链接：a 后面只有空白（没有实质文字或元素）
+        tail_content = "".join(
+            sib if isinstance(sib, str) else "" for sib in a.next_siblings
+        )
+        if tail_content.strip():
+            continue
+        prev = a.previous_sibling
+        a.extract()
+        # 链接前的短 emoji/符号（📱、♥️ 等，不含字母数字）一并去掉
+        if isinstance(prev, str) and prev.strip():
+            stripped = prev.strip()
+            if not re.search(r"[A-Za-z0-9\u0400-\u04FF\u4e00-\u9fff]", stripped):
+                prev.replace_with("")
+
+
 class WebFetcher(Fetcher):
     name = "web"
 
@@ -87,6 +112,7 @@ class WebFetcher(Fetcher):
                     br.replace_with("\n")
                 if self.strip_heading:
                     _strip_heading(text_el)
+                _strip_channel_link_tail(text_el)
                 text = text_el.get_text("", strip=False).strip()
 
             time_el = wrap.select_one("time[datetime]")
