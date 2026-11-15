@@ -28,6 +28,7 @@ from .buffer_client import (
     BufferClient,
     BufferError,
     image_assets,
+    video_assets,
     load_channel_cache,
     save_channel_cache,
 )
@@ -125,10 +126,15 @@ class Publisher:
             media_mode = (self.cfg.get("publish.buffer.media") or "telegram_url").lower()
             assets = []
             if media_mode == "telegram_url":
-                assets = image_assets(
-                    item.post.media_urls,
-                    limit=int(self.cfg.get("publish.buffer.max_assets", 4) or 4),
-                )
+                if item.post.video_urls:
+                    # 视频帖：发视频（缩略图在 media_urls 里）
+                    assets = video_assets(item.post.video_urls,
+                                          thumbs=item.post.media_urls, limit=1)
+                else:
+                    assets = image_assets(
+                        item.post.media_urls,
+                        limit=int(self.cfg.get("publish.buffer.max_assets", 4) or 4),
+                    )
             mode = self.cfg.get("publish.buffer.mode", "shareNow")
             due_at = None
             # 同批次的第 2 条往后，排到 10-15 分钟后的随机时刻，避免瞬间连发被 X 判刷屏
