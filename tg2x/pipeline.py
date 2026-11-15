@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import mimetypes
+import re
 import time
 from pathlib import Path
 
@@ -21,6 +22,17 @@ from .translator import Translator
 from .writer import NewsWriter, content_filter_reason
 
 log = logging.getLogger("tg2x")
+
+
+def _paragraph_spacing(text: str) -> str:
+    """把单个换行提升为段落间空行（\n\n），保留已有空行。
+
+    翻译直发（不经过 DeepSeek 写作）时，译文段落间只留一个空行，避免太紧凑。
+    """
+    text = (text or "").strip()
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    text = re.sub(r"(?<!\n)\n(?!\n)", "\n\n", text)
+    return text
 
 
 class Pipeline:
@@ -180,8 +192,10 @@ class Pipeline:
                      else self.translator._clean(post.text))
             text_en = self.writer.write(clean)
             if not text_en:
+                # 翻译直发：段落间空一行
                 text_en = (self.translator._clean_en(post.text) if ch["lang"] == "en"
                            else self.translator.translate(post.text))
+                text_en = _paragraph_spacing(text_en)
         # 统一品牌前缀（如 "FinBrief Alert: "）
         prefix = self.cfg.get("translate.prefix", "") or ""
         if prefix and text_en and not text_en.startswith(prefix.rstrip()):
