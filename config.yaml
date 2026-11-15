@@ -1,14 +1,14 @@
 # ===== Telegram 频道 -> 英文翻译 -> Buffer -> X 自动搬运 =====
 
 # 你关注的频道（不带 @）
-channel: "YMISH3333"
+channel: "accidents_idiots"
 
 # 多频道列表：所有频道的内容都发到同一个 X 账号（publish.buffer.channel_id）
 #   lang   : zh = 中文原文，翻译成英文再发；en = 英文原文，直接发（或洗稿后发）
 #   rewrite: true = 用 LLM 洗稿（换一种表达，保持事实不变）；false = 不洗稿
 channels:
-  - name: "YMISH3333"
-    lang: "zh"
+  - name: "accidents_idiots"
+    lang: "en"
     rewrite: false
   - name: "disaster_news"
     lang: "en"
