@@ -40,10 +40,16 @@ def _strip_channel_link_tail(text_el):
 
     宠物频道等每条末尾带「[频道名](https://t.me/xxx)」引流链接，get_text 会把
     链接文字（如俄语频道名「Пёсик」）留下来，翻译后变成「Doggie」之类噪音。
+
+    注意：带 ?start= 的邀请/推广链接（如 t.me/xxx?start=autopromo）**不去掉**，
+    必须留给广告过滤（INVITE_RE）拦截，否则广告会被当成正常内容发出。
     """
     for a in reversed(text_el.find_all("a")):
         href = (a.get("href") or "").lower()
         if "t.me/" not in href and "telegram.me/" not in href:
+            continue
+        # 带 start= 的是推广/邀请链接，保留给广告过滤拦截
+        if "start=" in href:
             continue
         # 只处理「末尾」链接：a 后面只有空白（没有实质文字或元素）
         tail_content = "".join(
