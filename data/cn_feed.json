@@ -1,13 +1,7 @@
 {
   "channel": "accidents_idiots",
-  "updated_at": "2026-11-16T03:00:45+08:00",
+  "updated_at": "2026-11-16T04:30:30+08:00",
   "posts": [
-    {
-      "message_id": 4957,
-      "text": "India - Bike rider dies after pig suddenly crosses his path",
-      "posted_at": "2026-11-13T06:22:19+08:00",
-      "url": "https://t.me/accidents_idiots/4957"
-    },
     {
       "message_id": 4958,
       "text": "Repost time",
@@ -73,6 +67,12 @@
       "text": "India",
       "posted_at": "2026-11-15T14:30:34+08:00",
       "url": "https://t.me/accidents_idiots/4977"
+    },
+    {
+      "message_id": 4978,
+      "text": "Reposting a stupid way to die",
+      "posted_at": "2026-11-16T04:15:10+08:00",
+      "url": "https://t.me/accidents_idiots/4978"
     }
   ]
 }
