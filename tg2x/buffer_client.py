@@ -169,16 +169,16 @@ def image_assets(urls: list[str], limit: int = 4) -> list[dict]:
 
 def video_assets(video_urls: list[str], thumbs: list[str] | None = None,
                  limit: int = 1) -> list[dict]:
-    """把公网视频 URL 列表转成 Buffer 的 assets 结构（video + 缩略图）。"""
+    """把公网视频 URL 列表转成 Buffer 的 assets 结构（video）。
+
+    注意：Buffer 不支持 video 的 thumbnailUrl（社交网络不接受自定义视频缩略图），
+    只能传 url，缩略图由 Buffer/X 自动从视频提取。
+    """
     out: list[dict] = []
-    thumbs = thumbs or []
-    for i, u in enumerate(video_urls):
+    for u in video_urls:
         if not u or not u.startswith("http"):
             continue
-        asset: dict[str, Any] = {"video": {"url": u}}
-        if i < len(thumbs) and thumbs[i].startswith("http"):
-            asset["video"]["thumbnailUrl"] = thumbs[i]
-        out.append(asset)
+        out.append({"video": {"url": u}})
         if len(out) >= limit:
             break
     return out
