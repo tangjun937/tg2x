@@ -45,6 +45,8 @@ class Pipeline:
         self.dedup_threshold = float(cfg.get("cleanup.dedup_threshold", 0.6) or 0.6)
         self.prune_keep = int(cfg.get("storage.prune_keep", 10) or 10)
         self.topic_first = bool(cfg.get("rank.topic_first", False))
+        # 内容合规过滤（中国政治敏感 + 关于中国只发 AI 类）。默认关闭，仅 bimi2x 开启
+        self.content_filter = bool(cfg.get("cleanup.content_filter", False))
 
     @staticmethod
     def _parse_channels(cfg: Config) -> list[dict]:
@@ -78,17 +80,18 @@ class Pipeline:
         result = {"fetched": 0, "new": 0, "published": 0, "failed": 0, "skipped": 0}
         self._items = []
 
-        # 1. 收集所有频道的新帖（先做合规过滤，避免占用发文名额）
+        # 1. 收集所有频道的新帖（开启合规过滤时，先过滤避免占用发文名额）
         candidates: list[tuple[dict, TgPost]] = []
         for ch in self.channels:
             for p in self._gather_channel(ch, result):
-                cr = content_filter_reason(p.text)
-                if cr:
-                    log.info("跳过 [%s]：合规过滤:%s", p.key, cr)
-                    self.store.record(p, "skipped")
-                    self.store.archive(p, {"reason": f"合规过滤:{cr}"})
-                    result["skipped"] += 1
-                    continue
+                if self.content_filter:
+                    cr = content_filter_reason(p.text)
+                    if cr:
+                        log.info("跳过 [%s]：合规过滤:%s", p.key, cr)
+                        self.store.record(p, "skipped")
+                        self.store.archive(p, {"reason": f"合规过滤:{cr}"})
+                        result["skipped"] += 1
+                        continue
                 candidates.append((ch, p))
 
         # 2. 影响排序（DeepSeek），只发影响大的前 N 篇
@@ -244,10 +247,11 @@ class Pipeline:
 
     # ---------- 跳过判定 ----------
     def _skip_reason(self, text: str) -> str:
-        """合规过滤（最高原则：中国政治、只发 AI）+ 黑名单 + 广告特征。"""
-        cr = content_filter_reason(text)
-        if cr:
-            return f"合规过滤:{cr}"
+        """合规过滤（开启时）+ 黑名单 + 广告特征。"""
+        if self.content_filter:
+            cr = content_filter_reason(text)
+            if cr:
+                return f"合规过滤:{cr}"
         hit = self._blocked_by(text)
         if hit:
             return f"屏蔽词:{hit}"
