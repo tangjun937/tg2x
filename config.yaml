@@ -111,7 +111,16 @@ cleanup:
     - '^\s*[➡️👉]\s*[^\n]*$'
     - '^\s*@\w+\s*$'
   # 命中任一词就跳过不发（X 对赌博/灰产/涉黄内容有限制，建议按需打开）
-  block_keywords: []
+  # accidents_idiots 频道为事故/猎奇内容，这里屏蔽涉华及常见种族歧视/侮辱性词汇
+  block_keywords:
+    - "chink"
+    - "chinaman"
+    - "ching chong"
+    - "nigger"
+    - "nigga"
+    - "wetback"
+    - "kike"
+    - "spic"
 
   # 广告/引流贴识别：命中任意「强广告词」整条跳过；「弱广告词」累计 2 个也跳过
   # 另外自动识别：t.me 邀请链接、纯链接堆、⚡️⚡️⚡️ 刷屏层
