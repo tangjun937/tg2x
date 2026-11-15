@@ -86,8 +86,9 @@ translate:
   strip_urls_from_translate: true
 
 # DeepSeek 写作引擎：洗稿 + 互动形式 + 写作要求总册核心原则
+# tg2x（XjianglinX）：关闭，扫描到内容后直接翻译发送（不洗稿）
 writer:
-  enabled: true
+  enabled: false
   # DeepSeek（OpenAI 兼容接口）
   base_url: "https://api.deepseek.com/v1"
   model: "deepseek-chat"
@@ -97,6 +98,8 @@ writer:
 
 # 原文清洗：频道尾巴的推广/投稿联系方式不要带到 X
 cleanup:
+  # 内容合规过滤（中国政治敏感 + 关于中国只发 AI 类）。tg2x 关闭（翻译直发，不过滤）
+  content_filter: false
   remove_patterns:
     - '关注[^\n]*?频道[^\n]*'
     - '投稿\s*[:：]\s*@\w+'
