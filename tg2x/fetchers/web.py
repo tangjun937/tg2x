@@ -119,6 +119,7 @@ class WebFetcher(Fetcher):
             posted_at = parse_tg_time(time_el["datetime"]) if time_el else ""
 
             media: list[str] = []
+            video_urls: list[str] = []
             has_photo = False
             for el in wrap.select(".tgme_widget_message_photo_wrap"):
                 m = URL_RE.search(el.get("style") or "")
@@ -126,11 +127,17 @@ class WebFetcher(Fetcher):
                     media.append(m.group(1))
                     has_photo = True
             has_video = False
-            for el in wrap.select("a.tgme_widget_message_video"):
-                href = el.get("href")
-                if href:
-                    media.append(href)
-                    has_video = True
+            # 视频：class 是 tgme_widget_message_video_player（含 <video src=mp4> 和缩略图）
+            for el in wrap.select("a.tgme_widget_message_video_player, a.tgme_widget_message_video"):
+                has_video = True
+                video = el.select_one("video[src]")
+                if video and video.get("src"):
+                    video_urls.append(video["src"])
+                thumb = el.select_one(".tgme_widget_message_video_thumb")
+                if thumb:
+                    m = URL_RE.search(thumb.get("style") or "")
+                    if m:
+                        media.append(m.group(1))
 
             out.append(
                 TgPost(
@@ -140,6 +147,7 @@ class WebFetcher(Fetcher):
                     posted_at=posted_at,
                     url=f"https://t.me/{ch}/{message_id}",
                     media_urls=media,
+                    video_urls=video_urls,
                     has_video=has_video,
                     has_photo=has_photo,
                     source=self.name,
