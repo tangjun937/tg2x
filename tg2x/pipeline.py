@@ -6,6 +6,7 @@ import logging
 import mimetypes
 import re
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
@@ -61,6 +62,8 @@ class Pipeline:
         self.content_filter = bool(cfg.get("cleanup.content_filter", False))
         # 只搬带图/视频的内容，纯文字长文跳过。默认关闭，宠物视频类账号开启
         self.media_only = bool(cfg.get("cleanup.media_only", False))
+        # 新鲜度过滤：只发最近 N 小时内的帖子，超过的直接跳过（防止频道更新慢时补发旧闻）
+        self.max_age_hours = int(cfg.get("cleanup.max_age_hours", 0) or 0)
 
     @staticmethod
     def _parse_channels(cfg: Config) -> list[dict]:
@@ -111,6 +114,13 @@ class Pipeline:
                     log.info("跳过 [%s]：无媒体（纯文字/长文）", p.key)
                     self.store.record(p, "skipped")
                     self.store.archive(p, {"reason": "no-media"})
+                    result["skipped"] += 1
+                    continue
+                # 新鲜度过滤：只发最近 N 小时内的帖子，防止频道更新慢时补发旧闻
+                if self.max_age_hours > 0 and self._is_stale(p):
+                    log.info("跳过 [%s]：超过 %d 小时的旧帖", p.key, self.max_age_hours)
+                    self.store.record(p, "skipped")
+                    self.store.archive(p, {"reason": "stale"})
                     result["skipped"] += 1
                     continue
                 candidates.append((ch, p))
@@ -177,6 +187,19 @@ class Pipeline:
         fresh = [p for p in posts if not self.store.seen(p.channel, p.message_id)]
         fresh.sort(key=lambda p: p.message_id, reverse=True)
         return fresh
+
+    def _is_stale(self, post: TgPost) -> bool:
+        """判断帖子是否超过 max_age_hours（旧帖）。解析失败视为不旧（放行）。"""
+        if not post.posted_at:
+            return False
+        try:
+            dt = datetime.fromisoformat(post.posted_at)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            age = datetime.now(timezone.utc).astimezone() - dt
+            return age.total_seconds() > self.max_age_hours * 3600
+        except Exception:  # noqa: BLE001
+            return False
 
     def _handle(self, post: TgPost, ch: dict, publish: bool = True, position: int = 0) -> str:
         """返回 published / skipped / failed 三种状态之一。"""
