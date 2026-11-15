@@ -27,7 +27,7 @@ fetch:
   backend: "web"
   interval_seconds: 30
   # 每轮最多发多少篇（合并所有频道新帖后，按影响排序取前 N 篇）
-  max_per_cycle: 2
+  max_per_cycle: 1
   request_timeout: 20
 
 publish:
