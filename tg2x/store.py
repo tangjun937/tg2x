@@ -116,14 +116,20 @@ class Store:
         return [r["text_en"] for r in rows if r["text_en"]]
 
     def prune(self, keep: int = 10) -> int:
-        """每个频道只保留最近 keep 条记录，删除更早的（避免库无限增长）。"""
+        """清理去重库，防止无限增长。
+
+        关键：**绝不删除 status='published' 的记录**（那是 message_id 去重的依据，
+        删了会导致同一条帖子被重复发布）。只清理 skipped/failed 等非 published 的
+        旧记录，每频道保留最近 keep 条。
+        """
         deleted = 0
         rows = self.conn.execute("SELECT DISTINCT channel FROM messages").fetchall()
         for r in rows:
             ch = r["channel"]
             cur = self.conn.execute(
-                """DELETE FROM messages WHERE channel=? AND message_id NOT IN (
-                       SELECT message_id FROM messages WHERE channel=?
+                """DELETE FROM messages WHERE channel=? AND status != 'published'
+                   AND message_id NOT IN (
+                       SELECT message_id FROM messages WHERE channel=? AND status != 'published'
                        ORDER BY message_id DESC LIMIT ?)""",
                 (ch, ch, keep),
             )
