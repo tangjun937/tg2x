@@ -153,23 +153,47 @@ AI_KEYWORDS = [
     "芯片", "半导体", "算力", "英伟达", "台积电", "处理器",
 ]
 
+# 关于中国的词（判断"是否涉及中国"；涉及中国的内容只发 AI 类）
+CHINA_RELATED_CN = ["中国", "北京", "上海", "深圳", "广州", "香港", "澳门", "台湾",
+                    "新疆", "西藏", "广东", "大陆", "内地", "国产", "中方", "中文"]
+CHINA_RELATED_EN = ["china", "chinese", "beijing", "shanghai", "shenzhen", "guangzhou",
+                    "hong kong", "macau", "taiwan", "xinjiang", "tibet", "guangdong"]
+
 _AI_WORD_RE = re.compile(r"\bai\b", re.IGNORECASE)
 _AGI_WORD_RE = re.compile(r"\bagi\b", re.IGNORECASE)
+
+
+def _is_china_related(text: str) -> bool:
+    """判断内容是否涉及中国（中文子串 + 英文词边界）。"""
+    low = (text or "").lower()
+    if any(w in low for w in CHINA_RELATED_CN):
+        return True
+    for w in CHINA_RELATED_EN:
+        if re.search(r"\b" + re.escape(w) + r"\b", low):
+            return True
+    return False
+
+
+def _is_ai(text: str) -> bool:
+    """判断内容是否 AI 类。"""
+    low = (text or "").lower()
+    return (_AI_WORD_RE.search(text or "") or _AGI_WORD_RE.search(text or "")
+            or any(w in low for w in AI_KEYWORDS))
 
 
 def content_filter_reason(text: str) -> str:
     """内容合规过滤，返回原因（空串=通过）。
 
-    最高原则：时政类不得有任何中国相关内容，命中即跳。
-    定位：只发 AI 类内容，非 AI 类跳。
+    最高原则：中国政治/主权敏感内容，一律不发。
+    关于中国的内容（非政治）：只发 AI 类，非 AI 类不发。
+    非中国的内容：正常发（不限 AI 类）。
     """
     low = (text or "").lower()
     if any(w in low for w in CHINA_POLITICAL):
         return "china-political"
-    if (_AI_WORD_RE.search(text or "") or _AGI_WORD_RE.search(text or "")
-            or any(w in low for w in AI_KEYWORDS)):
-        return ""
-    return "non-ai"
+    if _is_china_related(text) and not _is_ai(text):
+        return "china-non-ai"
+    return ""
 
 
 class NewsWriter:
