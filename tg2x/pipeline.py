@@ -59,6 +59,8 @@ class Pipeline:
         self.topic_first = bool(cfg.get("rank.topic_first", False))
         # 内容合规过滤（中国政治敏感 + 关于中国只发 AI 类）。默认关闭，仅 bimi2x 开启
         self.content_filter = bool(cfg.get("cleanup.content_filter", False))
+        # 只搬带图/视频的内容，纯文字长文跳过。默认关闭，宠物视频类账号开启
+        self.media_only = bool(cfg.get("cleanup.media_only", False))
 
     @staticmethod
     def _parse_channels(cfg: Config) -> list[dict]:
@@ -104,6 +106,13 @@ class Pipeline:
                         self.store.archive(p, {"reason": f"合规过滤:{cr}"})
                         result["skipped"] += 1
                         continue
+                # 只搬带图/视频的短视频，纯文字长文跳过
+                if self.media_only and not (p.has_photo or p.has_video):
+                    log.info("跳过 [%s]：无媒体（纯文字/长文）", p.key)
+                    self.store.record(p, "skipped")
+                    self.store.archive(p, {"reason": "no-media"})
+                    result["skipped"] += 1
+                    continue
                 candidates.append((ch, p))
 
         # 2. 影响排序（DeepSeek），只发影响大的前 N 篇
