@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import json
 import logging
-import random
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -137,13 +136,11 @@ class Publisher:
                     )
             mode = self.cfg.get("publish.buffer.mode", "shareNow")
             due_at = None
-            # 同批次的第 2 条往后，排到 10-15 分钟后的随机时刻，避免瞬间连发被 X 判刷屏
+            # 同批次的第 2 条起：每条固定间隔 spacing_min_minutes 分钟依次排后
+            # （第 N 条排 position*间隔 分钟后）。max_per_cycle=1 时不触发。
             if position > 0:
-                lo = int(self.cfg.get("publish.buffer.spacing_min_minutes", 10) or 10)
-                hi = int(self.cfg.get("publish.buffer.spacing_max_minutes", 15) or 15)
-                if hi < lo:
-                    hi = lo
-                delay = random.randint(lo, hi)
+                interval = int(self.cfg.get("publish.buffer.spacing_min_minutes", 10) or 10)
+                delay = position * interval
                 due = datetime.now(timezone.utc) + timedelta(minutes=delay)
                 due_at = due.strftime("%Y-%m-%dT%H:%M:%SZ")
                 mode = "customScheduled"
