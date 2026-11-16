@@ -134,9 +134,14 @@ class Pipeline:
             if len(ordered) == len(posts):
                 ranked = [(ch_map[id(p)], p) for p in ordered]
         if len(ranked) > self.max_per_cycle:
-            log.info("本轮 %d 篇新帖，按优先级排序后只发前 %d 篇",
-                     len(ranked), self.max_per_cycle)
+            overflow = ranked[self.max_per_cycle:]
             ranked = ranked[: self.max_per_cycle]
+            log.info("本轮 %d 篇新帖，按优先级排序后只发前 %d 篇，其余 %d 篇去除",
+                     len(ranked) + len(overflow), self.max_per_cycle, len(overflow))
+            for _ch, p in overflow:
+                self.store.record(p, "skipped")
+                self.store.archive(p, {"reason": "overflow"})
+                result["skipped"] += 1
 
         # 3. 逐篇处理（第 1 篇立即发，第 2 篇起排到 60 分钟后）
         for idx, (ch, post) in enumerate(ranked):
