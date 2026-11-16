@@ -18,16 +18,17 @@ log = logging.getLogger("tg2x")
 
 WRITE_SYSTEM = (
     "You are a news writer posting to X (Twitter). Rewrite the news into a SHORT, tight "
-    "ENGLISH post that reads like a human editor, not an AI. Always write in English, "
+    "ENGLISH post that reads like a sharp human editor, not an AI. Always write in English, "
     "even if the source text is Chinese or Russian.\n\n"
-    "BODY: State the key facts in 2-3 plain sentences. Just report what happened — no "
-    "analysis, no expansion, no editorializing.\n\n"
-    "OPINION: End with ONE short sentence (UNDER 50 WORDS) that takes a clear, subjective "
-    "stance. Be opinionated and direct — pick a side, pass judgment, praise or criticize, "
-    "predict an outcome. Do NOT stay neutral or hedge (avoid 'could', 'might', 'on the one "
-    "hand', 'both sides', 'time will tell'). Have conviction.\n\n"
-    "FORMAT: Put the body and the final opinion sentence in TWO separate paragraphs, "
-    "separated by ONE blank line.\n\n"
+    "OPINION FIRST: Open with your own take — a clear, subjective stance. Be opinionated "
+    "and direct: pick a side, pass judgment, praise or criticize, predict an outcome. "
+    "Do NOT stay neutral or hedge (avoid 'could', 'might', 'on the one hand', 'both sides', "
+    "'time will tell'). Have conviction. No word limit — write as long or as short as the "
+    "take needs.\n\n"
+    "BODY: Then give a VERY brief recap in 1-2 short sentences. Just the gist — keep only "
+    "the core fact (who/what/when and the key number), drop all secondary detail and padding.\n\n"
+    "FORMAT: The opinion paragraph FIRST, then ONE blank line, then the short body paragraph. "
+    "Two paragraphs total.\n\n"
     "FACTS: Keep every number, name, and date exact. Never fabricate.\n\n"
     "STYLE: Plain, specific, concrete. No 'not X but Y', no em dashes, no fake-deep "
     "sayings, no overused AI words (delve, pivotal, landscape, showcase, underscore, "
@@ -87,31 +88,25 @@ def _topic_level(text) -> int:
 
 
 def _ensure_paragraphs(text: str, max_sentences: int = 3) -> str:
-    """强制分段：正文与观点（最后一句）之间空一行；正文多句时按 max_sentences 分段。
+    """兜底分段：已有空行的多段文本保持原样；无空行时按句数均分，段间空一行。
 
-    规则：
-    - 已有空行（\\n\\n）的多段文本：只做换行规范化，原样保留结构。
-    - 无空行的文本：按句切分，最后一句当作「观点」单独成段，其余作为「正文」
-      每 max_sentences 句一段；段间一律空一行。
+    观点在前、正文在后的分段由写作指令（FORMAT）保证，这里只做兜底：
+    - 已有空行（\\n\\n）：只做换行规范化，原样保留。
+    - 无空行且句数少（≤ max_sentences）：原样返回，不强行拆（信任 AI 的输出）。
+    - 无空行且句数多：按 max_sentences 句均分成多段。
     """
     text = (text or "").strip()
     if not text:
         return text
-    # 规范化换行：\r\n / \r → \n
     text = re.sub(r"\r\n?", "\n", text)
     if "\n\n" in text:
         # 已有空行：只把 3 个以上连续换行压成 1 个空行
         return re.sub(r"\n{3,}", "\n\n", text)
     sentences = [s.strip() for s in re.split(r"(?<=[.!?。！？])\s+", text) if s.strip()]
-    if len(sentences) <= 1:
+    if len(sentences) <= max_sentences:
         return text
-    # 最后一句 = 观点，单独成段；其余 = 正文
-    body = sentences[:-1]
-    opinion = sentences[-1]
-    paragraphs: list[str] = []
-    for i in range(0, len(body), max_sentences):
-        paragraphs.append(" ".join(body[i:i + max_sentences]))
-    paragraphs.append(opinion)
+    paragraphs = [" ".join(sentences[i:i + max_sentences])
+                  for i in range(0, len(sentences), max_sentences)]
     return "\n\n".join(paragraphs)
 
 
