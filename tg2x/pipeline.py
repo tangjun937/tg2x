@@ -64,6 +64,9 @@ class Pipeline:
         self.media_only = bool(cfg.get("cleanup.media_only", False))
         # 新鲜度过滤：只发最近 N 小时内的帖子，超过的直接跳过（防止频道更新慢时补发旧闻）
         self.max_age_hours = int(cfg.get("cleanup.max_age_hours", 0) or 0)
+        # 溢出丢弃：超过 max_per_cycle 的部分直接标记跳过（24h扫一次的视频号用）。
+        # 默认 false = 保留给后续轮次继续发；dogs_vd/catx1t 设 true。
+        self.drop_overflow = bool(cfg.get("cleanup.drop_overflow", False))
 
     @staticmethod
     def _parse_channels(cfg: Config) -> list[dict]:
@@ -136,12 +139,16 @@ class Pipeline:
         if len(ranked) > self.max_per_cycle:
             overflow = ranked[self.max_per_cycle:]
             ranked = ranked[: self.max_per_cycle]
-            log.info("本轮 %d 篇新帖，按优先级排序后只发前 %d 篇，其余 %d 篇去除",
-                     len(ranked) + len(overflow), self.max_per_cycle, len(overflow))
-            for _ch, p in overflow:
-                self.store.record(p, "skipped")
-                self.store.archive(p, {"reason": "overflow"})
-                result["skipped"] += 1
+            if self.drop_overflow:
+                log.info("本轮 %d 篇新帖，按优先级排序后只发前 %d 篇，其余 %d 篇去除",
+                         len(ranked) + len(overflow), self.max_per_cycle, len(overflow))
+                for _ch, p in overflow:
+                    self.store.record(p, "skipped")
+                    self.store.archive(p, {"reason": "overflow"})
+                    result["skipped"] += 1
+            else:
+                log.info("本轮 %d 篇新帖，只发前 %d 篇，其余 %d 篇留待后续轮次",
+                         len(ranked) + len(overflow), self.max_per_cycle, len(overflow))
 
         # 3. 逐篇处理（第 1 篇立即发，第 2 篇起排到 60 分钟后）
         for idx, (ch, post) in enumerate(ranked):
