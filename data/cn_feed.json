@@ -1,13 +1,7 @@
 {
   "channel": "accidents_idiots",
-  "updated_at": "2026-11-17T10:00:44+08:00",
+  "updated_at": "2026-11-17T10:52:09+08:00",
   "posts": [
-    {
-      "message_id": 4958,
-      "text": "Repost time",
-      "posted_at": "2026-11-13T09:59:58+08:00",
-      "url": "https://t.me/accidents_idiots/4958"
-    },
     {
       "message_id": 4960,
       "text": "Texas, USA - Truck driver jumps from semi seconds before train crashes",
@@ -73,6 +67,18 @@
       "text": "Reposting a stupid way to die",
       "posted_at": "2026-11-16T04:15:10+08:00",
       "url": "https://t.me/accidents_idiots/4978"
+    },
+    {
+      "message_id": 4979,
+      "text": "Seattle, Washington, USA",
+      "posted_at": "2026-11-17T10:41:35+08:00",
+      "url": "https://t.me/accidents_idiots/4979"
+    },
+    {
+      "message_id": 4980,
+      "text": "Croatia",
+      "posted_at": "2026-11-17T10:45:04+08:00",
+      "url": "https://t.me/accidents_idiots/4980"
     }
   ]
 }
